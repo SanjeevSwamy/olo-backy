@@ -170,7 +170,7 @@ async def set_erp_cache(email_hash: str, is_valid: bool):
 
 # FAST DSU ERP verification
 def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
-    """DSU ERP-specific Selenium verification with instant exit on success"""
+    """DSU ERP-specific Selenium verification with headless Chrome"""
     
     if not ERP_LOGIN_URL:
         return len(email) > 0 and len(password) >= 4
@@ -188,14 +188,25 @@ def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--headless=new")
+        chrome_options.add_argument("--headless=new")  # ✅ New headless mode
+        chrome_options.add_argument("--disable-extensions")
+        chrome_options.add_argument("--disable-web-security")
+        chrome_options.add_argument("--allow-running-insecure-content")
+        chrome_options.add_argument("--disable-background-timer-throttling")
+        chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+        chrome_options.add_argument("--disable-renderer-backgrounding")
         chrome_options.add_argument("--window-size=1366,768")
         
-        logger.info("🔍 Running in visible mode")
+        # ✅ CRITICAL: Set Chrome binary path for Render
+        if ENV == "production":
+            chrome_options.binary_location = "/usr/bin/google-chrome-stable"
         
-        service = Service(get_chromedriver_path())
+        logger.info("🔍 Running in headless mode")
+        
+        service = Service(ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=chrome_options)
         driver.set_page_load_timeout(30)
+        driver.implicitly_wait(10)
         
         logger.info(f"🔍 Navigating to ERP...")
         driver.get(ERP_LOGIN_URL)
@@ -233,11 +244,13 @@ def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
         # STEP 3: Fill Password (JavaScript method)
         logger.info("⚡ Filling password...")
         try:
+            # Escape any quotes in password for JavaScript safety
+            safe_password = password.replace("'", "\\'").replace("\"", "\\\"")
             driver.execute_script(f"""
                 var passwordField = document.querySelector('input[name="txtPassword"]');
                 if (passwordField) {{
                     passwordField.focus();
-                    passwordField.value = '{password}';
+                    passwordField.value = '{safe_password}';
                     passwordField.dispatchEvent(new Event('input', {{ bubbles: true }}));
                     passwordField.dispatchEvent(new Event('change', {{ bubbles: true }}));
                 }}
@@ -263,23 +276,35 @@ def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
         # STEP 5: Check Result (INSTANT EXIT)
         logger.info("⚡ Checking login result...")
         try:
-            WebDriverWait(driver, 8).until(
+            # Wait for URL change or success indicators
+            WebDriverWait(driver, 10).until(
                 lambda d: d.current_url != ERP_LOGIN_URL
             )
             
             final_url = driver.current_url
             total_time = time.time() - start_time
             
+            # Check for success indicators
             is_success = (
                 final_url != ERP_LOGIN_URL and 
-                "dashboard" in final_url.lower()
+                ("dashboard" in final_url.lower() or 
+                 "home" in final_url.lower() or
+                 "main" in final_url.lower())
             )
             
             if is_success:
                 logger.info(f"✅ ERP login SUCCESS in {total_time:.1f}s")
                 return True
             else:
-                logger.error(f"❌ ERP login FAILED in {total_time:.1f}s")
+                # Check for error messages on the page
+                try:
+                    error_elements = driver.find_elements(By.XPATH, "//*[contains(text(), 'Invalid') or contains(text(), 'Error') or contains(text(), 'failed')]")
+                    if error_elements:
+                        logger.error(f"❌ ERP login FAILED: {error_elements[0].text}")
+                    else:
+                        logger.error(f"❌ ERP login FAILED: Unexpected redirect to {final_url}")
+                except:
+                    logger.error(f"❌ ERP login FAILED in {total_time:.1f}s")
                 return False
                 
         except Exception as e:
@@ -297,27 +322,6 @@ def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
             except:
                 pass
 
-@retry(stop=stop_after_attempt(2), wait=wait_fixed(2))
-async def verify_erp_login(email: str, password: str, role: str) -> bool:
-    """Production-ready ERP verification with caching"""
-    async with semaphore:
-        email_hash = get_email_hash(email)
-        
-        cached_result = await check_erp_cache(email_hash)
-        if cached_result is not None:
-            return cached_result
-        
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            executor, 
-            verify_erp_selenium_sync, 
-            email, 
-            password, 
-            role
-        )
-        
-        await set_erp_cache(email_hash, result)
-        return result
 
 def get_current_user(token: str) -> dict:
     """Decode JWT token and return user info"""
