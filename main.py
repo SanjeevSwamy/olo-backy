@@ -322,6 +322,29 @@ def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
             except:
                 pass
 
+@retry(stop=stop_after_attempt(2), wait=wait_fixed(2))
+async def verify_erp_login(email: str, password: str, role: str) -> bool:
+    """Production-ready ERP verification with caching"""
+    async with semaphore:
+        email_hash = get_email_hash(email)
+        
+        cached_result = await check_erp_cache(email_hash)
+        if cached_result is not None:
+            return cached_result
+        
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            executor, 
+            verify_erp_selenium_sync,  # ✅ This should match your function name
+            email, 
+            password, 
+            role
+        )
+        
+        await set_erp_cache(email_hash, result)
+        return result
+
+
 
 def get_current_user(token: str) -> dict:
     """Decode JWT token and return user info"""
