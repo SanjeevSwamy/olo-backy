@@ -1,6 +1,6 @@
 FROM python:3.11
 
-# Install Chrome using modern keyring method (no apt-key)
+# Install Chrome and dependencies
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg2 \
@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
     && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
+# Clear webdriver-manager cache to avoid THIRD_PARTY_NOTICES bug
 RUN rm -rf /root/.wdm || true
 
 WORKDIR /app
