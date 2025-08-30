@@ -503,8 +503,8 @@ async def get_posts_fast(hashtag: str, limit: int = 20, offset: int = 0, authori
         
         # STEP 1: Get all posts (main + replies) in ONE query (no change here)
         all_posts_result = supabase.table("posts").select("*").eq(
-            "hashtag", hashtag
-        ).eq("is_removed", False).order("created_at.desc").execute()
+           "hashtag", hashtag
+        ).eq("is_removed", False).order("created_at", desc=True).execute()
         
         if not all_posts_result.data:
             return {"posts": [], "user_reactions": {}} # Return empty reactions object
