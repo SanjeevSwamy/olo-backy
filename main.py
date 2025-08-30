@@ -75,14 +75,24 @@ app.add_middleware(
 )
 
 def get_chromedriver_path():
-    """Get correct chromedriver path, avoiding THIRD_PARTY files"""
+    """Get correct chromedriver path, fixing THIRD_PARTY_NOTICES bug"""
+    import os
     driver_path = ChromeDriverManager().install()
-    if "THIRD_PARTY_NOTICES" in driver_path:
-        driver_dir = os.path.dirname(driver_path)
-        actual_driver = os.path.join(driver_dir, "chromedriver")
-        if os.path.exists(actual_driver):
-            return actual_driver
+    
+    # Fix the THIRD_PARTY_NOTICES bug
+    if "THIRD_PARTY_NOTICES.chromedriver" in driver_path:
+        # Replace the incorrect file with the actual chromedriver
+        driver_path = driver_path.replace("THIRD_PARTY_NOTICES.chromedriver", "chromedriver")
+        
+        # If that doesn't exist, try finding chromedriver in the same directory
+        if not os.path.exists(driver_path):
+            driver_dir = os.path.dirname(driver_path)
+            potential_driver = os.path.join(driver_dir, "chromedriver")
+            if os.path.exists(potential_driver):
+                driver_path = potential_driver
+    
     return driver_path
+
 
 # Utility functions
 def hash_email(email: str) -> str:
