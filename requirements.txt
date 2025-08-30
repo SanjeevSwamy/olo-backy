@@ -4,7 +4,7 @@ python-multipart==0.0.20
 supabase==2.18.0
 python-dotenv==1.0.0
 selenium==4.15.0
-webdriver-manager==4.0.1
+webdriver-manager>=4.0.2
 tenacity==8.2.3
 bleach==6.1.0
 Pillow==10.3.0
