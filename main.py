@@ -198,7 +198,7 @@ def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--headless=new")  # ✅ New headless mode
+         # ✅ New headless mode
         chrome_options.add_argument("--disable-extensions")
         chrome_options.add_argument("--disable-web-security")
         chrome_options.add_argument("--allow-running-insecure-content")
