@@ -34,7 +34,6 @@ import tempfile
 import cv2                    # ✅ Add this
 import numpy as np            # ✅ Add this  
 import colorsys              # ✅ Add this
-from sklearn.color import rgb2lab
 
 
 
@@ -106,6 +105,17 @@ def hash_email(email: str) -> str:
     """Hash email for privacy while maintaining uniqueness"""
     return hashlib.sha256(f"{email}{JWT_SECRET}".encode()).hexdigest()
 
+def rgb_to_lab_simple(rgb):
+    """Simple RGB to LAB conversion without sklearn"""
+    r, g, b = rgb[0]/255.0, rgb[1]/255.0, rgb[2]/255.0
+    
+    # Simplified LAB-like conversion for color matching
+    l = 0.299*r + 0.587*g + 0.114*b  # Luminance
+    a = 0.5 * (r - g)  # Red-Green difference
+    b_val = 0.5 * (g - b)  # Yellow-Blue difference
+    
+    return [l*100, a*128, b_val*128]
+
 def get_email_hash(email: str) -> str:
     """Create hash for email caching"""
     return hashlib.sha256(f"{email}{JWT_SECRET}".encode()).hexdigest()
@@ -163,52 +173,49 @@ BLOCK_TO_ASCII = {
 }
 
 async def image_to_ascii_minecraft_exact(image_data: bytes) -> str:
-    """EXACT MinecraftDot algorithm - pixel perfect results"""
+    """MinecraftDot algorithm without sklearn dependency"""
     try:
         # Load image
         image = Image.open(io.BytesIO(image_data)).convert('RGB')
         
-        # Step 1: Resize to target dimensions (like Minecraft blocks)
-        target_width = 100  # Adjust for detail vs performance
+        # Resize to target dimensions
+        target_width = 50  # Smaller for faster processing
         aspect_ratio = image.height / image.width
-        target_height = int(target_width * aspect_ratio * 0.5)  # Font aspect ratio
+        target_height = int(target_width * aspect_ratio * 0.5)
         
         resized_image = image.resize((target_width, target_height), Image.Resampling.LANCZOS)
         image_array = np.array(resized_image)
         
-        # Step 2: Convert to LAB color space (CRITICAL for human vision matching)
-        lab_image = rgb2lab(image_array / 255.0)
-        
-        # Step 3: Convert Minecraft blocks to LAB
+        # Convert Minecraft blocks to simple LAB
         minecraft_lab = {}
         for block_name, rgb in MINECRAFT_BLOCKS.items():
-            lab_color = rgb2lab([[np.array(rgb) / 255.0]])[0]
+            lab_color = rgb_to_lab_simple(rgb)
             minecraft_lab[block_name] = lab_color
         
-        # Step 4: For each pixel, find closest Minecraft block using LAB distance
+        # Convert each pixel to closest Minecraft block
         ascii_lines = []
         for y in range(target_height):
             line = ''
             for x in range(target_width):
-                pixel_lab = lab_image[y, x]
+                pixel_rgb = image_array[y, x]
+                pixel_lab = rgb_to_lab_simple(pixel_rgb)
                 
-                # Find closest Minecraft block using Euclidean distance in LAB space
+                # Find closest Minecraft block
                 min_distance = float('inf')
                 closest_block = 'white_wool'
                 
                 for block_name, block_lab in minecraft_lab.items():
-                    # Calculate LAB distance (perceptually uniform)
                     distance = math.sqrt(
                         (pixel_lab[0] - block_lab[0]) ** 2 +
                         (pixel_lab[1] - block_lab[1]) ** 2 +
                         (pixel_lab[2] - block_lab[2]) ** 2
-                                        )
-                     
+                    )
+                    
                     if distance < min_distance:
                         min_distance = distance
                         closest_block = block_name
                 
-                # Convert block to ASCII character
+                # Convert to ASCII character
                 ascii_char = BLOCK_TO_ASCII.get(closest_block, ' ')
                 line += ascii_char
             
@@ -218,8 +225,9 @@ async def image_to_ascii_minecraft_exact(image_data: bytes) -> str:
         return result[:2000]
         
     except Exception as e:
-        logger.error(f"MinecraftDot conversion failed: {e}")
+        logger.error(f"Minecraft conversion failed: {e}")
         return await ascii_fallback_simple(image_data)
+
 
 
 async def check_erp_cache(email_hash: str) -> bool | None:
