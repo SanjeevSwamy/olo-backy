@@ -33,6 +33,8 @@ import tempfile
 import cv2                    # ✅ Add this
 import numpy as np            # ✅ Add this  
 import colorsys              # ✅ Add this
+from sklearn.color import rgb2lab
+
 
 
 print("--- SERVER DEBUG INFO ---")
@@ -120,88 +122,118 @@ def sanitize_input(text: str) -> str:
     """Sanitize user input to prevent XSS and injection"""
     return bleach.clean(text.strip(), strip=True)
 
-async def image_to_ascii_ultra_precise(image_data: bytes) -> str:
-    """ULTRA-PRECISE ASCII conversion that matches the original image exactly"""
+MINECRAFT_BLOCKS = {
+    'white_wool': (233, 236, 236),
+    'light_gray_wool': (142, 142, 134),
+    'gray_wool': (62, 68, 71),
+    'black_wool': (25, 25, 25),
+    'brown_wool': (131, 84, 50),
+    'red_wool': (153, 51, 51),
+    'orange_wool': (216, 127, 51),
+    'yellow_wool': (229, 229, 51),
+    'lime_wool': (127, 204, 25),
+    'green_wool': (102, 127, 51),
+    'cyan_wool': (76, 127, 153),
+    'light_blue_wool': (102, 153, 216),
+    'blue_wool': (51, 76, 178),
+    'purple_wool': (127, 63, 178),
+    'magenta_wool': (178, 76, 216),
+    'pink_wool': (242, 127, 165),
+}
+
+# ASCII equivalent characters for each block
+BLOCK_TO_ASCII = {
+    'black_wool': '█',
+    'gray_wool': '▓',
+    'light_gray_wool': '▒',
+    'white_wool': '░',
+    'brown_wool': '@',
+    'red_wool': '#',
+    'orange_wool': '%',
+    'yellow_wool': '*',
+    'lime_wool': '+',
+    'green_wool': '=',
+    'cyan_wool': '-',
+    'light_blue_wool': ':',
+    'blue_wool': '.',
+    'purple_wool': '~',
+    'magenta_wool': '^',
+    'pink_wool': ' ',
+}
+
+async def image_to_ascii_minecraft_exact(image_data: bytes) -> str:
+    """EXACT MinecraftDot algorithm - pixel perfect results"""
     try:
-        # Load image with maximum quality preservation
-        image = Image.open(io.BytesIO(image_data))
+        # Load image
+        image = Image.open(io.BytesIO(image_data)).convert('RGB')
         
-        # Convert to high-contrast grayscale
-        gray_image = image.convert('L')
+        # Step 1: Resize to target dimensions (like Minecraft blocks)
+        target_width = 100  # Adjust for detail vs performance
+        aspect_ratio = image.height / image.width
+        target_height = int(target_width * aspect_ratio * 0.5)  # Font aspect ratio
         
-        # CRITICAL: Enhance contrast dramatically for sharp edges
-        enhancer = ImageEnhance.Contrast(gray_image)
-        enhanced = enhancer.enhance(2.5)  # Very high contrast
+        resized_image = image.resize((target_width, target_height), Image.Resampling.LANCZOS)
+        image_array = np.array(resized_image)
         
-        # Apply edge detection to preserve shapes
-        edges = enhanced.filter(ImageFilter.FIND_EDGES)
+        # Step 2: Convert to LAB color space (CRITICAL for human vision matching)
+        lab_image = rgb2lab(image_array / 255.0)
         
-        # Combine enhanced image with edges for maximum detail
-        combined = Image.blend(enhanced, edges, 0.4)
+        # Step 3: Convert Minecraft blocks to LAB
+        minecraft_lab = {}
+        for block_name, rgb in MINECRAFT_BLOCKS.items():
+            lab_color = rgb2lab([[np.array(rgb) / 255.0]])[0]
+            minecraft_lab[block_name] = lab_color
         
-        # PRECISE sizing for exact shape retention
-        target_width = 100  # Increase for more detail
-        aspect_ratio = combined.height / combined.width
-        target_height = int(target_width * aspect_ratio * 0.5)
-        
-        # Use highest quality resampling
-        resized = combined.resize((target_width, target_height), Image.Resampling.LANCZOS)
-        
-        # OPTIMIZED character ramp for maximum contrast and shape accuracy
-        chars = "█▓▒░ "  # Block characters for solid shapes
-        # Alternative: chars = "@#%*+=-:. "  # Traditional ASCII
-        
-        # Convert with precision mapping
-        pixels = np.array(resized)
+        # Step 4: For each pixel, find closest Minecraft block using LAB distance
         ascii_lines = []
-        
-        for row in pixels:
+        for y in range(target_height):
             line = ''
-            for pixel in row:
-                # Enhanced mapping with gamma correction for better contrast
-                normalized = pixel / 255.0
-                gamma_corrected = normalized ** 0.6  # Gamma correction for better contrast
-                char_index = int(gamma_corrected * (len(chars) - 1))
-                char_index = min(char_index, len(chars) - 1)
-                line += chars[char_index]
+            for x in range(target_width):
+                pixel_lab = lab_image[y, x]
+                
+                # Find closest Minecraft block using Euclidean distance in LAB space
+                min_distance = float('inf')
+                closest_block = 'white_wool'
+                
+                for block_name, block_lab in minecraft_lab.items():
+                    # Calculate LAB distance (perceptually uniform)
+                    distance = math.sqrt(
+                        (pixel_lab - block_lab) ** 2 +
+                        (pixel_lab[1] - block_lab[33]) ** 2 +
+                        (pixel_lab - block_lab) ** 2
+                    )
+                    
+                    if distance < min_distance:
+                        min_distance = distance
+                        closest_block = block_name
+                
+                # Convert block to ASCII character
+                ascii_char = BLOCK_TO_ASCII.get(closest_block, ' ')
+                line += ascii_char
+            
             ascii_lines.append(line)
         
         result = '\n'.join(ascii_lines)
         return result[:2000]
         
     except Exception as e:
-        logger.error(f"Ultra-precise ASCII conversion failed: {e}")
-        return await image_to_ascii_fallback_accurate(image_data)
+        logger.error(f"MinecraftDot conversion failed: {e}")
+        return await ascii_fallback_simple(image_data)
 
-async def image_to_ascii_fallback_accurate(image_data: bytes) -> str:
-    """Fallback method using opencv for maximum accuracy"""
+async def ascii_fallback_simple(image_data: bytes) -> str:
+    """Simple fallback if MinecraftDot method fails"""
     try:
-        # Decode image with numpy/opencv
-        nparr = np.frombuffer(image_data, np.uint8)
-        image = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
+        image = Image.open(io.BytesIO(image_data)).convert('L')
+        width, height = 80, 40
+        image = image.resize((width, height))
         
-        # Apply strong bilateral filter to preserve edges while smoothing
-        filtered = cv2.bilateralFilter(image, 15, 80, 80)
-        
-        # Apply adaptive thresholding for crisp edges
-        threshold = cv2.adaptiveThreshold(
-            filtered, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
-        )
-        
-        # Resize with proper aspect ratio
-        height, width = threshold.shape
-        new_width = 100
-        new_height = int((height / width) * new_width * 0.5)
-        
-        resized = cv2.resize(threshold, (new_width, new_height), interpolation=cv2.INTER_LANCZOS4)
-        
-        # High-contrast character mapping
-        chars = "██▓▒░  "  # Using block chars for solid shapes
-        
+        chars = " ░▒▓█"
         ascii_lines = []
-        for row in resized:
+        
+        for y in range(height):
             line = ''
-            for pixel in row:
+            for x in range(width):
+                pixel = image.getpixel((x, y))
                 char_index = pixel * (len(chars) - 1) // 255
                 line += chars[char_index]
             ascii_lines.append(line)
@@ -209,37 +241,13 @@ async def image_to_ascii_fallback_accurate(image_data: bytes) -> str:
         return '\n'.join(ascii_lines)[:2000]
         
     except Exception as e:
-        logger.error(f"Fallback accurate conversion failed: {e}")
-        return "[High-quality ASCII conversion failed]"
+        logger.error(f"Fallback conversion failed: {e}")
+        return "[ASCII conversion failed]"
 
-# Update your main function
+# Replace your main function
 async def image_to_ascii_ultimate(image_data: bytes) -> str:
-    """Ultimate precision ASCII converter"""
-    try:
-        return await image_to_ascii_ultra_precise(image_data)
-    except:
-        return await image_to_ascii_fallback_accurate(image_data)
-# Cache functions
-async def check_erp_cache(email_hash: str) -> bool | None:
-    """Check if email is cached and still valid"""
-    try:
-        result = supabase.table("erp_cache").select("*").eq("email_hash", email_hash).execute()
-        
-        if result.data:
-            cache_entry = result.data[0]
-            expires_at = datetime.fromisoformat(cache_entry["expires_at"].replace('Z', '+00:00'))
-            
-            if datetime.now(expires_at.tzinfo) < expires_at:
-                logger.info(f"Cache hit for email hash: {email_hash[:8]}...")
-                return cache_entry["is_valid"]
-            else:
-                supabase.table("erp_cache").delete().eq("email_hash", email_hash).execute()
-                logger.info(f"Cache expired for email hash: {email_hash[:8]}...")
-        
-        return None
-    except Exception as e:
-        logger.error(f"Cache check failed: {e}")
-        return None
+    """Ultimate using MinecraftDot exact algorithm"""
+    return await image_to_ascii_minecraft_exact(image_data)
 
 async def set_erp_cache(email_hash: str, is_valid: bool):
     """Cache ERP verification result"""
