@@ -13,7 +13,7 @@ from fastapi import FastAPI, HTTPException, File, UploadFile, Header
 from fastapi.middleware.cors import CORSMiddleware
 from supabase import create_client, Client
 from dotenv import load_dotenv
-from PIL import Image
+from PIL import Image, ImageEnhance, ImageFilter  # ✅ Enhanced PIL imports
 import io
 import jwt
 from selenium import webdriver
@@ -28,10 +28,12 @@ from tenacity import retry, stop_after_attempt, wait_fixed
 import time
 import sys
 import platform
-import io
-from PIL import Image
 import subprocess
 import tempfile
+import cv2                    # ✅ Add this
+import numpy as np            # ✅ Add this  
+import colorsys              # ✅ Add this
+
 
 print("--- SERVER DEBUG INFO ---")
 print(f"🐍 Python Executable: {sys.executable}")
@@ -215,8 +217,8 @@ async def image_to_ascii_go_premium(image_data: bytes) -> str:
             '--width', '120',                    # Increased detail
             '--color',                           # Enable color support
             '--map', '$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,"^`\'. ',
-            '--complex',                         # Maximum complexity
-            '--dither'                           # Apply dithering
+            '--complex'                         # Maximum complexity
+                                    
         ]
         
         logger.info(f"🎨 Ultra conversion: {' '.join(cmd)}")
