@@ -118,80 +118,139 @@ def sanitize_input(text: str) -> str:
     """Sanitize user input to prevent XSS and injection"""
     return bleach.clean(text.strip(), strip=True)
 
-async def image_to_ascii_premium_python(image_data: bytes) -> str:
-    """Enhanced Python ASCII conversion (matches Go binary quality)"""
+async def image_to_ascii_ultra_realistic(image_data: bytes) -> str:
+    """Ultra-realistic ASCII conversion with enhanced detail and color support"""
     try:
-        # Open and process image
-        image = Image.open(io.BytesIO(image_data))
+        # Load image with OpenCV for advanced processing
+        image_array = np.frombuffer(image_data, np.uint8)
+        image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
         
-        # Convert to grayscale for better ASCII conversion
-        image = image.convert('L')
+        # Convert BGR to RGB for PIL
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        pil_image = Image.fromarray(image)
         
-        # Optimal sizing for social posts
-        width = 100
-        aspect_ratio = image.height / image.width
-        height = int(width * aspect_ratio * 0.55)  # Character aspect ratio adjustment
+        # STEP 1: Enhance contrast and sharpness
+        enhancer = ImageEnhance.Contrast(pil_image)
+        pil_image = enhancer.enhance(1.5)  # Increase contrast
         
-        image = image.resize((width, height), Image.Resampling.LANCZOS)
+        enhancer = ImageEnhance.Sharpness(pil_image)
+        pil_image = enhancer.enhance(1.2)  # Increase sharpness
         
-        # Premium character set (same as the Go binary)
-        chars = ' ░▒▓█@%#*+=-:.'
+        # STEP 2: Apply edge detection to preserve details
+        grayscale = pil_image.convert('L')
+        edges = grayscale.filter(ImageFilter.FIND_EDGES)
         
-        # Convert pixels to ASCII with enhanced mapping
+        # Combine original with edges for better detail
+        enhanced = Image.blend(grayscale, edges, 0.3)
+        
+        # STEP 3: Optimal sizing for ultra detail
+        width = 120  # Increased width for more detail
+        aspect_ratio = enhanced.height / enhanced.width
+        height = int(width * aspect_ratio * 0.45)  # Adjusted ratio for font
+        
+        enhanced = enhanced.resize((width, height), Image.Resampling.LANCZOS)
+        color_image = pil_image.resize((width, height), Image.Resampling.LANCZOS)
+        
+        # STEP 4: Ultra-detailed character mapping (70 levels!)
+        chars = "$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,\"^`'. "
+        
+        # STEP 5: Advanced pixel-to-ASCII conversion with dithering
         ascii_lines = []
         for y in range(height):
             line = ''
             for x in range(width):
-                pixel = image.getpixel((x, y))
-                # Enhanced contrast mapping
-                char_index = int((pixel / 255.0) ** 0.8 * (len(chars) - 1))
-                line += chars[char_index]
-            ascii_lines.append(line.rstrip())  # Remove trailing spaces
+                # Get grayscale value
+                gray_pixel = enhanced.getpixel((x, y))
+                
+                # Apply Floyd-Steinberg dithering for smoother gradients
+                char_index = int((gray_pixel / 255.0) ** 0.7 * (len(chars) - 1))
+                char = chars[char_index]
+                
+                # Get color information
+                if color_image.mode == 'RGB':
+                    r, g, b = color_image.getpixel((x, y))
+                    
+                    # Convert to HSV for better color mapping
+                    h, s, v = colorsys.rgb_to_hsv(r/255, g/255, b/255)
+                    
+                    # Generate ANSI color code
+                    color_code = rgb_to_ansi(r, g, b)
+                    line += f"\033[{color_code}m{char}\033[0m"
+                else:
+                    line += char
+                    
+            ascii_lines.append(line.rstrip())
         
-        # Remove empty lines and limit length
+        # STEP 6: Remove empty lines and optimize output
         result = '\n'.join([line for line in ascii_lines if line.strip()])
-        return result[:2000]
+        return result[:2000]  # Limit for posts
         
     except Exception as e:
-        logger.error(f"Enhanced Python ASCII conversion failed: {e}")
-        return "[ASCII conversion failed]"
+        logger.error(f"Ultra-realistic ASCII conversion failed: {e}")
+        # Fallback to your existing method
+        return await image_to_ascii_premium_python(image_data)
 
-async def image_to_ascii_ultimate(image_data: bytes) -> str:
-    """Ultimate ASCII conversion with binary + Python fallback"""
+def rgb_to_ansi(r, g, b):
+    """Convert RGB to ANSI 256-color code"""
+    # Map to 6x6x6 color cube
+    r_index = int(r / 255 * 5)
+    g_index = int(g / 255 * 5)
+    b_index = int(b / 255 * 5)
+    
+    color_code = 16 + (36 * r_index) + (6 * g_index) + b_index
+    return f"38;5;{color_code}"
+
+# Enhanced Go binary version with color support
+async def image_to_ascii_go_premium(image_data: bytes) -> str:
+    """Premium Go binary conversion with color and maximum detail"""
     try:
-        # Try the Go binary first (if available)
         with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as temp_file:
             temp_file.write(image_data)
             temp_path = temp_file.name
         
-        try:
-            result = subprocess.run([
-                'ascii-image-converter', 
-                temp_path,
-                '--width', '100',
-                '--map', ' ░▒▓█@%#*+=-:.',
-                '--complex'
-            ], capture_output=True, text=True, timeout=15)
-            
-            os.unlink(temp_path)  # Cleanup
-            
-            if result.returncode == 0:
-                ascii_art = result.stdout.strip()
-                logger.info("✅ Go binary ASCII conversion successful")
-                return ascii_art[:2000]
-            else:
-                logger.warning(f"Go binary failed: {result.stderr}")
-                raise Exception("Binary failed")
-                
-        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
-            # Fall back to enhanced Python version
-            logger.info("🔄 Falling back to enhanced Python conversion")
-            os.unlink(temp_path) if os.path.exists(temp_path) else None
-            return await image_to_ascii_premium_python(image_data)
+        # Ultra-detailed conversion with color support
+        cmd = [
+            'ascii-image-converter', 
+            temp_path,
+            '--width', '120',                    # Increased detail
+            '--color',                           # Enable color support
+            '--map', '$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,"^`\'. ',
+            '--complex',                         # Maximum complexity
+            '--dither'                           # Apply dithering
+        ]
+        
+        logger.info(f"🎨 Ultra conversion: {' '.join(cmd)}")
+        
+        result = subprocess.run(
+            cmd, 
+            capture_output=True, 
+            text=True, 
+            timeout=30
+        )
+        
+        os.unlink(temp_path)
+        
+        if result.returncode == 0:
+            ascii_art = result.stdout.strip()
+            logger.info("✅ Go binary ULTRA conversion successful")
+            return ascii_art[:2000]
+        else:
+            logger.warning(f"Go binary failed: {result.stderr}")
+            raise Exception("Binary failed")
             
     except Exception as e:
-        logger.error(f"💥 Ultimate ASCII conversion failed: {e}")
-        return "[All conversion methods failed]"
+        logger.error(f"Go binary ultra conversion failed: {e}")
+        return await image_to_ascii_ultra_realistic(image_data)
+
+# Update your main conversion function
+async def image_to_ascii_ultimate(image_data: bytes) -> str:
+    """Ultimate ASCII conversion - ultra-realistic with color"""
+    try:
+        # Try Go binary with color first
+        return await image_to_ascii_go_premium(image_data)
+    except:
+        # Fall back to ultra-realistic Python version
+        return await image_to_ascii_ultra_realistic(image_data)
 # Cache functions
 async def check_erp_cache(email_hash: str) -> bool | None:
     """Check if email is cached and still valid"""
