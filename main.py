@@ -192,66 +192,69 @@ async def image_to_ascii_ultra_realistic(image_data: bytes) -> str:
         # Fallback to your existing method
         return await image_to_ascii_premium_python(image_data)
 
-def rgb_to_ansi(r, g, b):
-    """Convert RGB to ANSI 256-color code"""
-    # Map to 6x6x6 color cube
-    r_index = int(r / 255 * 5)
-    g_index = int(g / 255 * 5)
-    b_index = int(b / 255 * 5)
+def detect_terminal_color_support() -> str:
+    """Detect terminal color capabilities"""
+    import os
     
-    color_code = 16 + (36 * r_index) + (6 * g_index) + b_index
-    return f"38;5;{color_code}"
+    colorterm = os.getenv('COLORTERM', '').lower()
+    term = os.getenv('TERM', '').lower()
+    
+    # Check for true color support
+    if 'truecolor' in colorterm or '24bit' in colorterm:
+        return 'truecolor'
+    elif '256color' in term:
+        return '256color'
+    else:
+        return 'none'
 
-# Enhanced Go binary version with color support
-async def image_to_ascii_go_premium(image_data: bytes) -> str:
-    """Premium Go binary conversion with color and maximum detail"""
+async def image_to_ascii_go_smart(image_data: bytes) -> str:
+    """Smart ASCII conversion with terminal-aware color support"""
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as temp_file:
             temp_file.write(image_data)
             temp_path = temp_file.name
         
-        # Ultra-detailed conversion with color support
+        # Detect terminal capabilities
+        color_mode = detect_terminal_color_support()
+        
         cmd = [
             'ascii-image-converter', 
             temp_path,
-            '--width', '120',                    # Increased detail
-            '--color',                           # Enable color support
+            '--width', '120',                    
             '--map', '$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,"^`\'. ',
-            '--complex'                         # Maximum complexity
-                                    
+            '--complex'                         
         ]
         
-        logger.info(f"🎨 Ultra conversion: {' '.join(cmd)}")
+        # Only add color if terminal supports it
+        if color_mode in ['truecolor', '256color']:
+            cmd.append('--color')
+            logger.info(f"🎨 Using {color_mode} mode")
+        else:
+            logger.info("🎨 Using monochrome mode (no color support)")
         
-        result = subprocess.run(
-            cmd, 
-            capture_output=True, 
-            text=True, 
-            timeout=30
-        )
+        logger.info(f"🎨 Smart conversion: {' '.join(cmd)}")
         
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         os.unlink(temp_path)
         
         if result.returncode == 0:
             ascii_art = result.stdout.strip()
-            logger.info("✅ Go binary ULTRA conversion successful")
+            logger.info("✅ Smart conversion successful")
             return ascii_art[:2000]
         else:
             logger.warning(f"Go binary failed: {result.stderr}")
             raise Exception("Binary failed")
             
     except Exception as e:
-        logger.error(f"Go binary ultra conversion failed: {e}")
+        logger.error(f"Smart conversion failed: {e}")
         return await image_to_ascii_ultra_realistic(image_data)
 
-# Update your main conversion function
+# Update your main function
 async def image_to_ascii_ultimate(image_data: bytes) -> str:
-    """Ultimate ASCII conversion - ultra-realistic with color"""
+    """Ultimate ASCII conversion with smart color detection"""
     try:
-        # Try Go binary with color first
-        return await image_to_ascii_go_premium(image_data)
+        return await image_to_ascii_go_smart(image_data)
     except:
-        # Fall back to ultra-realistic Python version
         return await image_to_ascii_ultra_realistic(image_data)
 # Cache functions
 async def check_erp_cache(email_hash: str) -> bool | None:
