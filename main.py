@@ -116,31 +116,59 @@ def sanitize_input(text: str) -> str:
     """Sanitize user input to prevent XSS and injection"""
     return bleach.clean(text.strip(), strip=True)
 
-def image_to_ascii_sync(image_data: bytes) -> str:
-    """
-    Synchronous, HIGH-QUALITY image to ASCII conversion using ascii_magic.
-    """
+async def image_to_ascii_premium(image_data: bytes) -> str:
+    """Premium ASCII conversion using the Go binary"""
     try:
-        # Let the specialized library handle the complex conversion
-        # We can use more columns for better detail
-        ascii_art = ascii_magic.from_image_bytes(
-            image_data,
-            columns=100,      # More columns = more detail. 100 is a good start.
-            char=' ░▒▓█',     # You can provide a custom character ramp for style
-            back=None,        # No background color
-        ).to_ascii()
+        # Save image to temp file
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as temp_file:
+            temp_file.write(image_data)
+            temp_path = temp_file.name
         
-        # Enforce the character limit for the post
-        return ascii_art[:2000]
+        # Run ascii-image-converter with optimized settings
+        cmd = [
+            'ascii-image-converter', 
+            temp_path,
+            '--width', '100',                    # Perfect for social posts
+            '--map', ' ░▒▓█@%#*+=-:.',          # Rich character set
+            '--complex'                          # High detail
+        ]
         
+        logger.info(f"🎨 Converting image to ASCII: {' '.join(cmd)}")
+        
+        result = subprocess.run(
+            cmd, 
+            capture_output=True, 
+            text=True, 
+            timeout=30
+        )
+        
+        # Cleanup temp file
+        try:
+            os.unlink(temp_path)
+        except:
+            pass
+        
+        if result.returncode == 0:
+            ascii_art = result.stdout.strip()
+            logger.info(f"✅ ASCII conversion successful: {len(ascii_art)} chars")
+            return ascii_art[:2000]  # Limit for posts
+        else:
+            logger.error(f"❌ ASCII converter error: {result.stderr}")
+            # Fall back to your existing ascii_magic function
+            return await image_to_ascii_sync(image_data)
+            
+    except subprocess.TimeoutExpired:
+        logger.error("❌ ASCII conversion timed out")
+        return "[Conversion timed out - using fallback]"
     except Exception as e:
-        logger.error(f"ASCII conversion failed with ascii_magic: {e}")
-        return f"[Failed to convert image]"
+        logger.error(f"❌ Premium ASCII conversion failed: {e}")
+        # Fall back to existing function
+        return await image_to_ascii_sync(image_data)
 
-async def image_to_ascii(image_data: bytes, width: int = 50) -> str:
-    """Non-blocking image conversion"""
+async def image_to_ascii(image_data: bytes, width: int = 100) -> str:
+    """Non-blocking premium image conversion with fallback"""
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(executor, image_to_ascii_sync, image_data)
+    return await loop.run_in_executor(executor, lambda: asyncio.run(image_to_ascii_premium(image_data)))
 # Cache functions
 async def check_erp_cache(email_hash: str) -> bool | None:
     """Check if email is cached and still valid"""
