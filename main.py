@@ -7,6 +7,7 @@ import logging
 import bleach
 from datetime import date, datetime, timedelta
 from typing import Optional
+import math
 from concurrent.futures import ThreadPoolExecutor
 import ascii_magic
 from fastapi import FastAPI, HTTPException, File, UploadFile, Header
@@ -198,11 +199,11 @@ async def image_to_ascii_minecraft_exact(image_data: bytes) -> str:
                 for block_name, block_lab in minecraft_lab.items():
                     # Calculate LAB distance (perceptually uniform)
                     distance = math.sqrt(
-                        (pixel_lab - block_lab) ** 2 +
-                        (pixel_lab[1] - block_lab[33]) ** 2 +
-                        (pixel_lab - block_lab) ** 2
-                    )
-                    
+                        (pixel_lab[0] - block_lab[0]) ** 2 +
+                        (pixel_lab[1] - block_lab[1]) ** 2 +
+                        (pixel_lab[2] - block_lab[2]) ** 2
+                                        )
+                     
                     if distance < min_distance:
                         min_distance = distance
                         closest_block = block_name
@@ -219,6 +220,29 @@ async def image_to_ascii_minecraft_exact(image_data: bytes) -> str:
     except Exception as e:
         logger.error(f"MinecraftDot conversion failed: {e}")
         return await ascii_fallback_simple(image_data)
+
+
+async def check_erp_cache(email_hash: str) -> bool | None:
+    """Check if email is cached and still valid"""
+    try:
+        result = supabase.table("erp_cache").select("*").eq("email_hash", email_hash).execute()
+        
+        if result.data:
+            cache_entry = result.data[0]
+            expires_at = datetime.fromisoformat(cache_entry["expires_at"].replace('Z', '+00:00'))
+            
+            if datetime.now(expires_at.tzinfo) < expires_at:
+                logger.info(f"Cache hit for email hash: {email_hash[:8]}...")
+                return cache_entry["is_valid"]
+            else:
+                supabase.table("erp_cache").delete().eq("email_hash", email_hash).execute()
+                logger.info(f"Cache expired for email hash: {email_hash[:8]}...")
+        
+        return None
+    except Exception as e:
+        logger.error(f"Cache check failed: {e}")
+        return None
+
 
 async def ascii_fallback_simple(image_data: bytes) -> str:
     """Simple fallback if MinecraftDot method fails"""
@@ -248,6 +272,106 @@ async def ascii_fallback_simple(image_data: bytes) -> str:
 async def image_to_ascii_ultimate(image_data: bytes) -> str:
     """Ultimate using MinecraftDot exact algorithm"""
     return await image_to_ascii_minecraft_exact(image_data)
+async def create_minecraft_block_art(image_data: bytes) -> str:
+    """Create HTML with 3D CSS Minecraft blocks"""
+    try:
+        from PIL import Image
+        import numpy as np
+        
+        # Load and process image
+        image = Image.open(io.BytesIO(image_data)).convert('RGB')
+        
+        # Resize for pixel art (perfect size for visual blocks)
+        width = 24
+        aspect_ratio = image.height / image.width
+        height = int(width * aspect_ratio)
+        
+        resized = image.resize((width, height), Image.Resampling.NEAREST)
+        pixels = np.array(resized)
+        
+        # Enhanced Minecraft block colors with CSS
+        minecraft_css_blocks = {
+            (255, 255, 255): {'color': '#f9fffe', 'name': 'white'},
+            (62, 68, 71): {'color': '#3e4447', 'name': 'gray'},  
+            (25, 25, 25): {'color': '#191919', 'name': 'black'},
+            (153, 51, 51): {'color': '#993333', 'name': 'red'},
+            (216, 127, 51): {'color': '#d87f33', 'name': 'orange'},
+            (229, 229, 51): {'color': '#e5e533', 'name': 'yellow'},
+            (127, 204, 25): {'color': '#7fcc19', 'name': 'lime'},
+            (102, 127, 51): {'color': '#667f33', 'name': 'green'},
+            (76, 127, 153): {'color': '#4c7f99', 'name': 'cyan'},
+            (51, 76, 178): {'color': '#334cb2', 'name': 'blue'},
+            (127, 63, 178): {'color': '#7f3fb2', 'name': 'purple'},
+        }
+        
+        # Generate 3D HTML blocks
+        html_blocks = []
+        for y in range(height):
+            row_html = '<div class="mc-row">'
+            for x in range(width):
+                pixel = tuple(pixels[y, x])
+                
+                # Find closest Minecraft block color
+                closest_color = min(minecraft_css_blocks.keys(), 
+                                  key=lambda c: sum(abs(p-q) for p,q in zip(pixel, c)))
+                block_info = minecraft_css_blocks[closest_color]
+                
+                # Create 3D CSS block with shadows and highlights
+                row_html += f'''<div class="mc-block mc-{block_info['name']}" style="
+                    background: linear-gradient(135deg, {block_info['color']} 0%, 
+                               {block_info['color']}dd 50%, 
+                               {block_info['color']}bb 100%);
+                    box-shadow: 
+                        inset 2px 2px 4px rgba(255,255,255,0.4),
+                        inset -2px -2px 4px rgba(0,0,0,0.4),
+                        2px 2px 6px rgba(0,0,0,0.3);
+                "></div>'''
+            
+            row_html += '</div>'
+            html_blocks.append(row_html)
+        
+        # Complete HTML with advanced CSS
+        full_html = f'''
+        <style>
+        .minecraft-art {{
+            display: inline-block;
+            background: linear-gradient(45deg, #8B4513, #A0522D);
+            padding: 12px;
+            border-radius: 8px;
+            margin: 10px 0;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            border: 2px solid #654321;
+        }}
+        .mc-row {{
+            display: flex;
+            height: 20px;
+            margin: 0;
+            padding: 0;
+        }}
+        .mc-block {{
+            width: 20px;
+            height: 20px;
+            margin: 0;
+            border: 1px solid rgba(0,0,0,0.2);
+            flex-shrink: 0;
+            position: relative;
+        }}
+        .mc-block:hover {{
+            transform: scale(1.05);
+            transition: transform 0.1s ease;
+        }}
+        </style>
+        <div class="minecraft-art">
+            {"".join(html_blocks)}
+        </div>
+        '''
+        
+        return full_html
+        
+    except Exception as e:
+        logger.error(f"Minecraft HTML generation failed: {e}")
+        return '<div style="color: red;">🎮 Minecraft generation failed</div>'
+
 
 async def set_erp_cache(email_hash: str, is_valid: bool):
     """Cache ERP verification result"""
@@ -833,9 +957,9 @@ async def report_post(post_id: str, authorization: Optional[str] = Header(None))
         raise HTTPException(500, "Failed to report post")
 
 
-@app.post("/upload-image")
-async def upload_image(file: UploadFile = File(...), authorization: Optional[str] = Header(None)):
-    """Premium ASCII image upload with Go binary + Python fallback"""
+@app.post("/upload-minecraft-visual")
+async def upload_minecraft_visual(file: UploadFile = File(...), authorization: Optional[str] = Header(None)):
+    """Generate visual Minecraft block art like the websites"""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(401, "Authorization token required")
     
@@ -846,28 +970,29 @@ async def upload_image(file: UploadFile = File(...), authorization: Optional[str
         raise HTTPException(400, "File must be an image")
     
     # Size limit for performance
-    if file.size and file.size > 10 * 1024 * 1024:  # 10MB limit
-        raise HTTPException(400, "Image too large (max 10MB)")
+    if file.size and file.size > 5 * 1024 * 1024:  # 5MB limit
+        raise HTTPException(400, "Image too large (max 5MB)")
     
     try:
-        logger.info(f"🎨 Processing image upload: {file.filename}")
+        logger.info(f"🎮 Creating Minecraft visual: {file.filename}")
         image_data = await file.read()
         
-        # Use your ultimate conversion function (Go binary + Python fallback)
-        ascii_art = await image_to_ascii_ultimate(image_data)
+        # Generate visual Minecraft blocks
+        minecraft_html = await create_minecraft_block_art(image_data)
         
-        logger.info(f"✅ ASCII conversion successful: {len(ascii_art)} chars")
+        logger.info(f"✅ Minecraft visual created")
         
         return {
             "success": True,
-            "ascii_art": ascii_art,
-            "message": "🎨 Premium ASCII art ready! Paste it in your post!",
-            "quality": "ultimate"
+            "minecraft_html": minecraft_html,
+            "message": "🎮 Minecraft visual art ready!",
+            "type": "minecraft_visual"
         }
         
     except Exception as e:
-        logger.error(f"💥 Error processing image: {e}")
-        raise HTTPException(500, "Failed to process image")
+        logger.error(f"💥 Minecraft visual error: {e}")
+        raise HTTPException(500, "Failed to create Minecraft visual")
+
 
 
 if __name__ == "__main__":
