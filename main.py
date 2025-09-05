@@ -120,79 +120,88 @@ def sanitize_input(text: str) -> str:
     """Sanitize user input to prevent XSS and injection"""
     return bleach.clean(text.strip(), strip=True)
 
-async def image_to_ascii_working(image_data: bytes) -> str:
-    """ACTUALLY WORKING ASCII conversion that looks like the image"""
+async def image_to_ascii_ultra_precise(image_data: bytes) -> str:
+    """ULTRA-PRECISE ASCII conversion that matches the original image exactly"""
     try:
-        # Load image with numpy
-        image_array = np.frombuffer(image_data, np.uint8)
-        image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
+        # Load image with maximum quality preservation
+        image = Image.open(io.BytesIO(image_data))
         
-        # Convert to PIL for better processing
-        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        pil_image = Image.fromarray(image_rgb)
+        # Convert to high-contrast grayscale
+        gray_image = image.convert('L')
         
-        # STEP 1: Enhance the image
-        enhancer = ImageEnhance.Contrast(pil_image)
-        pil_image = enhancer.enhance(1.3)  # Boost contrast
+        # CRITICAL: Enhance contrast dramatically for sharp edges
+        enhancer = ImageEnhance.Contrast(gray_image)
+        enhanced = enhancer.enhance(2.5)  # Very high contrast
         
-        # STEP 2: Convert to grayscale
-        gray_image = pil_image.convert('L')
+        # Apply edge detection to preserve shapes
+        edges = enhanced.filter(ImageFilter.FIND_EDGES)
         
-        # STEP 3: Proper sizing (CRITICAL!)
-        width = 100  # Good detail without being too wide
-        aspect_ratio = gray_image.height / gray_image.width
-        height = int(width * aspect_ratio * 0.5)  # Adjust for character height
+        # Combine enhanced image with edges for maximum detail
+        combined = Image.blend(enhanced, edges, 0.4)
         
-        resized = gray_image.resize((width, height), Image.Resampling.LANCZOS)
+        # PRECISE sizing for exact shape retention
+        target_width = 100  # Increase for more detail
+        aspect_ratio = combined.height / combined.width
+        target_height = int(target_width * aspect_ratio * 0.5)
         
-        # STEP 4: PROPER character ramp (from dark to light)
-        chars = "@%#*+=-:. "  # Simple but effective
+        # Use highest quality resampling
+        resized = combined.resize((target_width, target_height), Image.Resampling.LANCZOS)
         
-        # STEP 5: Convert pixels to ASCII
+        # OPTIMIZED character ramp for maximum contrast and shape accuracy
+        chars = "█▓▒░ "  # Block characters for solid shapes
+        # Alternative: chars = "@#%*+=-:. "  # Traditional ASCII
+        
+        # Convert with precision mapping
         pixels = np.array(resized)
         ascii_lines = []
         
         for row in pixels:
             line = ''
             for pixel in row:
-                # Map pixel value (0-255) to character index
-                char_index = int(pixel / 255 * (len(chars) - 1))
+                # Enhanced mapping with gamma correction for better contrast
+                normalized = pixel / 255.0
+                gamma_corrected = normalized ** 0.6  # Gamma correction for better contrast
+                char_index = int(gamma_corrected * (len(chars) - 1))
+                char_index = min(char_index, len(chars) - 1)
                 line += chars[char_index]
             ascii_lines.append(line)
         
         result = '\n'.join(ascii_lines)
-        return result[:2000]  # Limit for posts
+        return result[:2000]
         
     except Exception as e:
-        logger.error(f"Working ASCII conversion failed: {e}")
-        return "[ASCII conversion failed]"
+        logger.error(f"Ultra-precise ASCII conversion failed: {e}")
+        return await image_to_ascii_fallback_accurate(image_data)
 
-# Simple fallback version using just PIL
-async def image_to_ascii_simple(image_data: bytes) -> str:
-    """Simple, reliable ASCII conversion"""
+async def image_to_ascii_fallback_accurate(image_data: bytes) -> str:
+    """Fallback method using opencv for maximum accuracy"""
     try:
-        # Open image
-        image = Image.open(io.BytesIO(image_data))
+        # Decode image with numpy/opencv
+        nparr = np.frombuffer(image_data, np.uint8)
+        image = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
         
-        # Convert to grayscale
-        image = image.convert('L')
+        # Apply strong bilateral filter to preserve edges while smoothing
+        filtered = cv2.bilateralFilter(image, 15, 80, 80)
+        
+        # Apply adaptive thresholding for crisp edges
+        threshold = cv2.adaptiveThreshold(
+            filtered, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
+        )
         
         # Resize with proper aspect ratio
-        width = 80
-        aspect_ratio = image.height / image.width
-        height = int(width * aspect_ratio * 0.45)
+        height, width = threshold.shape
+        new_width = 100
+        new_height = int((height / width) * new_width * 0.5)
         
-        image = image.resize((width, height))
+        resized = cv2.resize(threshold, (new_width, new_height), interpolation=cv2.INTER_LANCZOS4)
         
-        # Simple character set
-        chars = " .:-=+*#%@"
+        # High-contrast character mapping
+        chars = "██▓▒░  "  # Using block chars for solid shapes
         
-        # Convert to ASCII
         ascii_lines = []
-        for y in range(height):
+        for row in resized:
             line = ''
-            for x in range(width):
-                pixel = image.getpixel((x, y))
+            for pixel in row:
                 char_index = pixel * (len(chars) - 1) // 255
                 line += chars[char_index]
             ascii_lines.append(line)
@@ -200,34 +209,16 @@ async def image_to_ascii_simple(image_data: bytes) -> str:
         return '\n'.join(ascii_lines)[:2000]
         
     except Exception as e:
-        logger.error(f"Simple ASCII conversion failed: {e}")
-        return "[ASCII conversion failed]"
+        logger.error(f"Fallback accurate conversion failed: {e}")
+        return "[High-quality ASCII conversion failed]"
 
 # Update your main function
 async def image_to_ascii_ultimate(image_data: bytes) -> str:
-    """Ultimate ASCII conversion with working fallbacks"""
+    """Ultimate precision ASCII converter"""
     try:
-        # Try the working version first
-        return await image_to_ascii_working(image_data)
+        return await image_to_ascii_ultra_precise(image_data)
     except:
-        try:
-            # Fall back to simple version
-            return await image_to_ascii_simple(image_data)
-        except:
-            # Last resort - basic conversion
-            try:
-                image = Image.open(io.BytesIO(image_data)).convert('L')
-                image = image.resize((60, 30))
-                chars = " .:-=+*#%@"
-                result = ""
-                for y in range(30):
-                    for x in range(60):
-                        pixel = image.getpixel((x, y))
-                        result += chars[pixel * 9 // 255]
-                    result += "\n"
-                return result[:2000]
-            except:
-                return "[All ASCII conversion methods failed]"
+        return await image_to_ascii_fallback_accurate(image_data)
 # Cache functions
 async def check_erp_cache(email_hash: str) -> bool | None:
     """Check if email is cached and still valid"""
