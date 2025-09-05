@@ -797,9 +797,10 @@ async def report_post(post_id: str, authorization: Optional[str] = Header(None))
         logger.error(f"Error reporting: {e}")
         raise HTTPException(500, "Failed to report post")
 
+
 @app.post("/upload-image")
 async def upload_image(file: UploadFile = File(...), authorization: Optional[str] = Header(None)):
-    """Non-blocking image upload and conversion"""
+    """Premium ASCII image upload with Go binary + Python fallback"""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(401, "Authorization token required")
     
@@ -809,19 +810,30 @@ async def upload_image(file: UploadFile = File(...), authorization: Optional[str
     if not file.content_type or not file.content_type.startswith('image/'):
         raise HTTPException(400, "File must be an image")
     
+    # Size limit for performance
+    if file.size and file.size > 10 * 1024 * 1024:  # 10MB limit
+        raise HTTPException(400, "Image too large (max 10MB)")
+    
     try:
+        logger.info(f"🎨 Processing image upload: {file.filename}")
         image_data = await file.read()
-        ascii_art = await image_to_ascii(image_data)
+        
+        # Use your ultimate conversion function (Go binary + Python fallback)
+        ascii_art = await image_to_ascii_ultimate(image_data)
+        
+        logger.info(f"✅ ASCII conversion successful: {len(ascii_art)} chars")
         
         return {
             "success": True,
             "ascii_art": ascii_art,
-            "message": "Paste this ASCII art in your post!"
+            "message": "🎨 Premium ASCII art ready! Paste it in your post!",
+            "quality": "ultimate"
         }
         
     except Exception as e:
-        logger.error(f"Error processing image: {e}")
+        logger.error(f"💥 Error processing image: {e}")
         raise HTTPException(500, "Failed to process image")
+
 
 if __name__ == "__main__":
     import uvicorn
