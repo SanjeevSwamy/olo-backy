@@ -120,142 +120,114 @@ def sanitize_input(text: str) -> str:
     """Sanitize user input to prevent XSS and injection"""
     return bleach.clean(text.strip(), strip=True)
 
-async def image_to_ascii_ultra_realistic(image_data: bytes) -> str:
-    """Ultra-realistic ASCII conversion with enhanced detail and color support"""
+async def image_to_ascii_working(image_data: bytes) -> str:
+    """ACTUALLY WORKING ASCII conversion that looks like the image"""
     try:
-        # Load image with OpenCV for advanced processing
+        # Load image with numpy
         image_array = np.frombuffer(image_data, np.uint8)
         image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
         
-        # Convert BGR to RGB for PIL
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        pil_image = Image.fromarray(image)
+        # Convert to PIL for better processing
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        pil_image = Image.fromarray(image_rgb)
         
-        # STEP 1: Enhance contrast and sharpness
+        # STEP 1: Enhance the image
         enhancer = ImageEnhance.Contrast(pil_image)
-        pil_image = enhancer.enhance(1.5)  # Increase contrast
+        pil_image = enhancer.enhance(1.3)  # Boost contrast
         
-        enhancer = ImageEnhance.Sharpness(pil_image)
-        pil_image = enhancer.enhance(1.2)  # Increase sharpness
+        # STEP 2: Convert to grayscale
+        gray_image = pil_image.convert('L')
         
-        # STEP 2: Apply edge detection to preserve details
-        grayscale = pil_image.convert('L')
-        edges = grayscale.filter(ImageFilter.FIND_EDGES)
+        # STEP 3: Proper sizing (CRITICAL!)
+        width = 100  # Good detail without being too wide
+        aspect_ratio = gray_image.height / gray_image.width
+        height = int(width * aspect_ratio * 0.5)  # Adjust for character height
         
-        # Combine original with edges for better detail
-        enhanced = Image.blend(grayscale, edges, 0.3)
+        resized = gray_image.resize((width, height), Image.Resampling.LANCZOS)
         
-        # STEP 3: Optimal sizing for ultra detail
-        width = 120  # Increased width for more detail
-        aspect_ratio = enhanced.height / enhanced.width
-        height = int(width * aspect_ratio * 0.45)  # Adjusted ratio for font
+        # STEP 4: PROPER character ramp (from dark to light)
+        chars = "@%#*+=-:. "  # Simple but effective
         
-        enhanced = enhanced.resize((width, height), Image.Resampling.LANCZOS)
-        color_image = pil_image.resize((width, height), Image.Resampling.LANCZOS)
+        # STEP 5: Convert pixels to ASCII
+        pixels = np.array(resized)
+        ascii_lines = []
         
-        # STEP 4: Ultra-detailed character mapping (70 levels!)
-        chars = "$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,\"^`'. "
+        for row in pixels:
+            line = ''
+            for pixel in row:
+                # Map pixel value (0-255) to character index
+                char_index = int(pixel / 255 * (len(chars) - 1))
+                line += chars[char_index]
+            ascii_lines.append(line)
         
-        # STEP 5: Advanced pixel-to-ASCII conversion with dithering
+        result = '\n'.join(ascii_lines)
+        return result[:2000]  # Limit for posts
+        
+    except Exception as e:
+        logger.error(f"Working ASCII conversion failed: {e}")
+        return "[ASCII conversion failed]"
+
+# Simple fallback version using just PIL
+async def image_to_ascii_simple(image_data: bytes) -> str:
+    """Simple, reliable ASCII conversion"""
+    try:
+        # Open image
+        image = Image.open(io.BytesIO(image_data))
+        
+        # Convert to grayscale
+        image = image.convert('L')
+        
+        # Resize with proper aspect ratio
+        width = 80
+        aspect_ratio = image.height / image.width
+        height = int(width * aspect_ratio * 0.45)
+        
+        image = image.resize((width, height))
+        
+        # Simple character set
+        chars = " .:-=+*#%@"
+        
+        # Convert to ASCII
         ascii_lines = []
         for y in range(height):
             line = ''
             for x in range(width):
-                # Get grayscale value
-                gray_pixel = enhanced.getpixel((x, y))
-                
-                # Apply Floyd-Steinberg dithering for smoother gradients
-                char_index = int((gray_pixel / 255.0) ** 0.7 * (len(chars) - 1))
-                char = chars[char_index]
-                
-                # Get color information
-                if color_image.mode == 'RGB':
-                    r, g, b = color_image.getpixel((x, y))
-                    
-                    # Convert to HSV for better color mapping
-                    h, s, v = colorsys.rgb_to_hsv(r/255, g/255, b/255)
-                    
-                    # Generate ANSI color code
-                    color_code = rgb_to_ansi(r, g, b)
-                    line += f"\033[{color_code}m{char}\033[0m"
-                else:
-                    line += char
-                    
-            ascii_lines.append(line.rstrip())
+                pixel = image.getpixel((x, y))
+                char_index = pixel * (len(chars) - 1) // 255
+                line += chars[char_index]
+            ascii_lines.append(line)
         
-        # STEP 6: Remove empty lines and optimize output
-        result = '\n'.join([line for line in ascii_lines if line.strip()])
-        return result[:2000]  # Limit for posts
+        return '\n'.join(ascii_lines)[:2000]
         
     except Exception as e:
-        logger.error(f"Ultra-realistic ASCII conversion failed: {e}")
-        # Fallback to your existing method
-        return await image_to_ascii_premium_python(image_data)
-
-def detect_terminal_color_support() -> str:
-    """Detect terminal color capabilities"""
-    import os
-    
-    colorterm = os.getenv('COLORTERM', '').lower()
-    term = os.getenv('TERM', '').lower()
-    
-    # Check for true color support
-    if 'truecolor' in colorterm or '24bit' in colorterm:
-        return 'truecolor'
-    elif '256color' in term:
-        return '256color'
-    else:
-        return 'none'
-
-async def image_to_ascii_go_smart(image_data: bytes) -> str:
-    """Smart ASCII conversion with terminal-aware color support"""
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as temp_file:
-            temp_file.write(image_data)
-            temp_path = temp_file.name
-        
-        # Detect terminal capabilities
-        color_mode = detect_terminal_color_support()
-        
-        cmd = [
-            'ascii-image-converter', 
-            temp_path,
-            '--width', '120',                    
-            '--map', '$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,"^`\'. ',
-            '--complex'                         
-        ]
-        
-        # Only add color if terminal supports it
-        if color_mode in ['truecolor', '256color']:
-            cmd.append('--color')
-            logger.info(f"🎨 Using {color_mode} mode")
-        else:
-            logger.info("🎨 Using monochrome mode (no color support)")
-        
-        logger.info(f"🎨 Smart conversion: {' '.join(cmd)}")
-        
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        os.unlink(temp_path)
-        
-        if result.returncode == 0:
-            ascii_art = result.stdout.strip()
-            logger.info("✅ Smart conversion successful")
-            return ascii_art[:2000]
-        else:
-            logger.warning(f"Go binary failed: {result.stderr}")
-            raise Exception("Binary failed")
-            
-    except Exception as e:
-        logger.error(f"Smart conversion failed: {e}")
-        return await image_to_ascii_ultra_realistic(image_data)
+        logger.error(f"Simple ASCII conversion failed: {e}")
+        return "[ASCII conversion failed]"
 
 # Update your main function
 async def image_to_ascii_ultimate(image_data: bytes) -> str:
-    """Ultimate ASCII conversion with smart color detection"""
+    """Ultimate ASCII conversion with working fallbacks"""
     try:
-        return await image_to_ascii_go_smart(image_data)
+        # Try the working version first
+        return await image_to_ascii_working(image_data)
     except:
-        return await image_to_ascii_ultra_realistic(image_data)
+        try:
+            # Fall back to simple version
+            return await image_to_ascii_simple(image_data)
+        except:
+            # Last resort - basic conversion
+            try:
+                image = Image.open(io.BytesIO(image_data)).convert('L')
+                image = image.resize((60, 30))
+                chars = " .:-=+*#%@"
+                result = ""
+                for y in range(30):
+                    for x in range(60):
+                        pixel = image.getpixel((x, y))
+                        result += chars[pixel * 9 // 255]
+                    result += "\n"
+                return result[:2000]
+            except:
+                return "[All ASCII conversion methods failed]"
 # Cache functions
 async def check_erp_cache(email_hash: str) -> bool | None:
     """Check if email is cached and still valid"""
