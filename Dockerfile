@@ -10,12 +10,11 @@ RUN apt-get update && apt-get install -y \
     && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
-# Install ascii-image-converter binary (CORRECTED URL)
-RUN wget -q https://github.com/TheZoraiz/ascii-image-converter/releases/download/v1.13.1/ascii-image-converter_1.13.1_linux_amd64.tar.gz \
-    && tar -xzf ascii-image-converter_1.13.1_linux_amd64.tar.gz \
-    && mv ascii-image-converter /usr/local/bin/ \
-    && chmod +x /usr/local/bin/ascii-image-converter \
-    && rm ascii-image-converter_1.13.1_linux_amd64.tar.gz
+# Install ascii-image-converter via OFFICIAL APT REPOSITORY (BULLETPROOF)
+RUN echo 'deb [trusted=yes] https://apt.fury.io/ascii-image-converter/ /' | tee /etc/apt/sources.list.d/ascii-image-converter.list \
+    && apt-get update \
+    && apt-get install -y ascii-image-converter \
+    && rm -rf /var/lib/apt/lists/*
 
 # Clear webdriver-manager cache to avoid THIRD_PARTY_NOTICES bug
 RUN rm -rf /root/.wdm || true
