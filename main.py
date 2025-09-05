@@ -30,6 +30,8 @@ import sys
 import platform
 import io
 from PIL import Image
+import subprocess
+import tempfile
 
 print("--- SERVER DEBUG INFO ---")
 print(f"🐍 Python Executable: {sys.executable}")
@@ -116,59 +118,80 @@ def sanitize_input(text: str) -> str:
     """Sanitize user input to prevent XSS and injection"""
     return bleach.clean(text.strip(), strip=True)
 
-async def image_to_ascii_premium(image_data: bytes) -> str:
-    """Premium ASCII conversion using the Go binary"""
+async def image_to_ascii_premium_python(image_data: bytes) -> str:
+    """Enhanced Python ASCII conversion (matches Go binary quality)"""
     try:
-        # Save image to temp file
+        # Open and process image
+        image = Image.open(io.BytesIO(image_data))
+        
+        # Convert to grayscale for better ASCII conversion
+        image = image.convert('L')
+        
+        # Optimal sizing for social posts
+        width = 100
+        aspect_ratio = image.height / image.width
+        height = int(width * aspect_ratio * 0.55)  # Character aspect ratio adjustment
+        
+        image = image.resize((width, height), Image.Resampling.LANCZOS)
+        
+        # Premium character set (same as the Go binary)
+        chars = ' ░▒▓█@%#*+=-:.'
+        
+        # Convert pixels to ASCII with enhanced mapping
+        ascii_lines = []
+        for y in range(height):
+            line = ''
+            for x in range(width):
+                pixel = image.getpixel((x, y))
+                # Enhanced contrast mapping
+                char_index = int((pixel / 255.0) ** 0.8 * (len(chars) - 1))
+                line += chars[char_index]
+            ascii_lines.append(line.rstrip())  # Remove trailing spaces
+        
+        # Remove empty lines and limit length
+        result = '\n'.join([line for line in ascii_lines if line.strip()])
+        return result[:2000]
+        
+    except Exception as e:
+        logger.error(f"Enhanced Python ASCII conversion failed: {e}")
+        return "[ASCII conversion failed]"
+
+async def image_to_ascii_ultimate(image_data: bytes) -> str:
+    """Ultimate ASCII conversion with binary + Python fallback"""
+    try:
+        # Try the Go binary first (if available)
         with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as temp_file:
             temp_file.write(image_data)
             temp_path = temp_file.name
         
-        # Run ascii-image-converter with optimized settings
-        cmd = [
-            'ascii-image-converter', 
-            temp_path,
-            '--width', '100',                    # Perfect for social posts
-            '--map', ' ░▒▓█@%#*+=-:.',          # Rich character set
-            '--complex'                          # High detail
-        ]
-        
-        logger.info(f"🎨 Converting image to ASCII: {' '.join(cmd)}")
-        
-        result = subprocess.run(
-            cmd, 
-            capture_output=True, 
-            text=True, 
-            timeout=30
-        )
-        
-        # Cleanup temp file
         try:
-            os.unlink(temp_path)
-        except:
-            pass
-        
-        if result.returncode == 0:
-            ascii_art = result.stdout.strip()
-            logger.info(f"✅ ASCII conversion successful: {len(ascii_art)} chars")
-            return ascii_art[:2000]  # Limit for posts
-        else:
-            logger.error(f"❌ ASCII converter error: {result.stderr}")
-            # Fall back to your existing ascii_magic function
-            return await image_to_ascii_sync(image_data)
+            result = subprocess.run([
+                'ascii-image-converter', 
+                temp_path,
+                '--width', '100',
+                '--map', ' ░▒▓█@%#*+=-:.',
+                '--complex'
+            ], capture_output=True, text=True, timeout=15)
             
-    except subprocess.TimeoutExpired:
-        logger.error("❌ ASCII conversion timed out")
-        return "[Conversion timed out - using fallback]"
+            os.unlink(temp_path)  # Cleanup
+            
+            if result.returncode == 0:
+                ascii_art = result.stdout.strip()
+                logger.info("✅ Go binary ASCII conversion successful")
+                return ascii_art[:2000]
+            else:
+                logger.warning(f"Go binary failed: {result.stderr}")
+                raise Exception("Binary failed")
+                
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+            # Fall back to enhanced Python version
+            logger.info("🔄 Falling back to enhanced Python conversion")
+            os.unlink(temp_path) if os.path.exists(temp_path) else None
+            return await image_to_ascii_premium_python(image_data)
+            
     except Exception as e:
-        logger.error(f"❌ Premium ASCII conversion failed: {e}")
-        # Fall back to existing function
-        return await image_to_ascii_sync(image_data)
-
-async def image_to_ascii(image_data: bytes, width: int = 100) -> str:
-    """Non-blocking premium image conversion with fallback"""
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(executor, lambda: asyncio.run(image_to_ascii_premium(image_data)))
+        logger.error(f"💥 Ultimate ASCII conversion failed: {e}")
+        return "[All conversion methods failed]"
 # Cache functions
 async def check_erp_cache(email_hash: str) -> bool | None:
     """Check if email is cached and still valid"""
