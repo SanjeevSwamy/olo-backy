@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
     && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
-# Install ascii-image-converter binary
+# Install ascii-image-converter binary (CORRECTED URL)
 RUN wget -q https://github.com/TheZoraiz/ascii-image-converter/releases/download/v1.13.1/ascii-image-converter_1.13.1_linux_amd64.tar.gz \
     && tar -xzf ascii-image-converter_1.13.1_linux_amd64.tar.gz \
     && mv ascii-image-converter /usr/local/bin/ \
