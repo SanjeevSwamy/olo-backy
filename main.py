@@ -179,7 +179,7 @@ async def image_to_ascii_minecraft_exact(image_data: bytes) -> str:
         image = Image.open(io.BytesIO(image_data)).convert('RGB')
         
         # Resize to target dimensions
-        target_width = 50  # Smaller for faster processing
+        target_width = 10  # Smaller for faster processing
         aspect_ratio = image.height / image.width
         target_height = int(target_width * aspect_ratio * 0.5)
         
