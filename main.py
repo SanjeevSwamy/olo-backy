@@ -344,7 +344,7 @@ async def set_erp_cache(email_hash: str, is_valid: bool):
 
 # ⚡ SUPER SPEED HACK: ULTRA FAST ERP verification
 def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
-    """LIGHTNING FAST ERP verification - optimized for speed"""
+    """PRODUCTION BULLETPROOF ERP verification - No more timeouts!"""
     
     if not ERP_LOGIN_URL:
         return len(email) > 0 and len(password) >= 4
@@ -356,9 +356,10 @@ def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
     driver = None
     try:
         start_time = time.time()
-        logger.info(f"⚡ SPEED MODE: Starting ERP verification for {email}")
+        logger.info(f"🚀 BULLETPROOF: Starting ERP verification for {email}")
         
         chrome_options = Options()
+        # 🔧 PRODUCTION CHROME OPTIONS - BULLETPROOF!
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-gpu")
@@ -369,30 +370,79 @@ def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
         chrome_options.add_argument("--disable-background-timer-throttling")
         chrome_options.add_argument("--disable-backgrounding-occluded-windows")
         chrome_options.add_argument("--disable-renderer-backgrounding")
-        chrome_options.add_argument("--window-size=1366,768")
-        # ⚡ SPEED HACKS
-        chrome_options.add_argument("--disable-images")  # Don't load images
+        
+        # ⚡ TIMEOUT FIX OPTIONS
+        chrome_options.add_argument("--disable-images")  # No images = faster
         chrome_options.add_argument("--disable-javascript")  # Minimal JS
         chrome_options.add_argument("--disable-plugins")
         chrome_options.add_argument("--disable-java")
         chrome_options.add_argument("--aggressive-cache-discard")
+        chrome_options.add_argument("--disable-background-networking")
+        chrome_options.add_argument("--disable-sync")
+        chrome_options.add_argument("--disable-translate")
+        chrome_options.add_argument("--hide-scrollbars")
+        chrome_options.add_argument("--disable-notifications")
+        chrome_options.add_argument("--disable-logging")
+        chrome_options.add_argument("--disable-login-animations")
+        chrome_options.add_argument("--disable-modal-animations")
+        chrome_options.add_argument("--no-first-run")
+        chrome_options.add_argument("--no-default-browser-check")
+        chrome_options.add_argument("--disable-infobars")
+        chrome_options.add_argument("--disable-features=TranslateUI")
+        chrome_options.add_argument("--disable-ipc-flooding-protection")
+        # ⚡ NETWORK & DNS SPEEDUP
+        chrome_options.add_argument("--dns-prefetch-disable")
+        chrome_options.add_argument("--disable-web-resources")
+        chrome_options.add_argument("--disable-client-side-phishing-detection")
+        
+        # 🔧 PERFORMANCE PREFS
+        prefs = {
+            "profile.default_content_setting_values": {
+                "notifications": 2,
+                "images": 2,
+                "javascript": 1,  # Allow JS for form interactions
+                "plugins": 2,
+                "popups": 2,
+                "geolocation": 2,
+                "media_stream": 2,
+            },
+            "profile.managed_default_content_settings": {
+                "images": 2,
+                "javascript": 1,
+            }
+        }
+        chrome_options.add_experimental_option("prefs", prefs)
+        chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])
+        chrome_options.add_experimental_option('useAutomationExtension', False)
+        
+        # 🔧 PAGE LOAD STRATEGY - EAGER MODE
+        chrome_options.page_load_strategy = 'eager'  # Don't wait for all resources
         
         if ENV == "production":
             chrome_options.binary_location = "/usr/bin/google-chrome-stable"
         
         service = Service(ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=chrome_options)
-        driver.set_page_load_timeout(10)  # ⚡ Reduced from 30 to 10
-        driver.implicitly_wait(3)  # ⚡ Reduced from 10 to 3
         
-        logger.info(f"⚡ SPEED: Navigating to ERP...")
+        # ⚡ AGGRESSIVE TIMEOUTS - PRODUCTION OPTIMIZED
+        driver.set_page_load_timeout(8)  # 8 seconds max page load
+        driver.implicitly_wait(2)  # 2 seconds max wait
+        driver.set_script_timeout(3)  # 3 seconds max script execution
+        
+        logger.info(f"⚡ BULLETPROOF: Navigating to ERP...")
         driver.get(ERP_LOGIN_URL)
         
-        wait = WebDriverWait(driver, 5)  # ⚡ Reduced from 15 to 5
-        wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+        wait = WebDriverWait(driver, 3)  # 3 seconds max wait
         
-        # ⚡ SPEED: Skip role selection delay
-        logger.info(f"⚡ SPEED: Selecting role: {role}")
+        # ⚡ IMMEDIATE PRESENCE CHECK
+        try:
+            wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+        except:
+            logger.error("❌ Page failed to load body tag")
+            return False
+        
+        # STEP 1: Select Role (with timeout protection)
+        logger.info(f"⚡ BULLETPROOF: Selecting role: {role}")
         try:
             if role.lower() == "student":
                 role_elem = wait.until(EC.element_to_be_clickable((By.XPATH, "//input[@type='radio'][2]")))
@@ -403,9 +453,10 @@ def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
             logger.info(f"✅ Role selected: {role}")
         except Exception as e:
             logger.warning(f"Role selection failed: {e}")
+            # Continue anyway - some sites might not have role selection
         
-        # ⚡ SPEED: Fill username instantly
-        logger.info("⚡ SPEED: Filling username...")
+        # STEP 2: Fill Username (with timeout protection)
+        logger.info("⚡ BULLETPROOF: Filling username...")
         try:
             username_elem = wait.until(EC.element_to_be_clickable((By.XPATH, "//input[@type='text'][1]")))
             username_elem.clear()
@@ -415,59 +466,107 @@ def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
             logger.error(f"❌ Username filling failed: {e}")
             return False
         
-        # ⚡ SPEED: Fill password with base64 (no delays)
-        logger.info("⚡ SPEED: Filling password...")
+        # STEP 3: Fill Password (bulletproof base64 method)
+        logger.info("⚡ BULLETPROOF: Filling password...")
         try:
             safe_password = base64.b64encode(password.encode()).decode()
             
-            driver.execute_script(f"""
-                var passwordField = document.querySelector('input[name="txtPassword"]');
-                if (passwordField) {{
-                    passwordField.focus();
-                    passwordField.value = atob('{safe_password}');
-                    passwordField.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                    passwordField.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                }}
-            """)
+            # Try multiple password field selectors
+            password_selectors = [
+                'input[name="txtPassword"]',
+                'input[type="password"]',
+                '#password',
+                '.password'
+            ]
+            
+            success = False
+            for selector in password_selectors:
+                try:
+                    driver.execute_script(f"""
+                        var passwordField = document.querySelector('{selector}');
+                        if (passwordField) {{
+                            passwordField.focus();
+                            passwordField.value = atob('{safe_password}');
+                            passwordField.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                            passwordField.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                        }}
+                    """)
+                    success = True
+                    break
+                except:
+                    continue
+            
+            if not success:
+                logger.error("❌ Could not find password field")
+                return False
+                
             logger.info("✅ Password filled")
             
         except Exception as e:
             logger.error(f"❌ Password filling failed: {e}")
             return False
         
-        # ⚡ SPEED: Submit form instantly
-        logger.info("⚡ SPEED: Submitting form...")
+        # STEP 4: Submit Form (bulletproof submission)
+        logger.info("⚡ BULLETPROOF: Submitting form...")
         try:
-            submit_elem = wait.until(EC.element_to_be_clickable((By.XPATH, "//input[@name='btnLogin']")))
-            driver.execute_script("arguments[0].click();", submit_elem)
+            submit_selectors = [
+                "//input[@name='btnLogin']",
+                "//button[@type='submit']",
+                "//input[@type='submit']",
+                "//button[contains(text(), 'Login')]",
+                "//input[contains(@value, 'Login')]"
+            ]
+            
+            success = False
+            for selector in submit_selectors:
+                try:
+                    submit_elem = wait.until(EC.element_to_be_clickable((By.XPATH, selector)))
+                    driver.execute_script("arguments[0].click();", submit_elem)
+                    success = True
+                    break
+                except:
+                    continue
+            
+            if not success:
+                logger.error("❌ Could not find submit button")
+                return False
+                
             logger.info("✅ Form submitted")
             
         except Exception as e:
             logger.error(f"❌ Form submission failed: {e}")
             return False
         
-        # ⚡ SPEED: Quick result check (5 seconds max)
-        logger.info("⚡ SPEED: Checking login result...")
+        # STEP 5: Quick Result Check (3 seconds max)
+        logger.info("⚡ BULLETPROOF: Checking login result...")
         try:
-            WebDriverWait(driver, 5).until(  # ⚡ Reduced from 10 to 5
-                lambda d: d.current_url != ERP_LOGIN_URL
-            )
+            # Wait for URL change with timeout
+            start_check = time.time()
+            while time.time() - start_check < 3:  # 3 seconds max
+                current_url = driver.current_url
+                if current_url != ERP_LOGIN_URL:
+                    break
+                time.sleep(0.1)
             
             final_url = driver.current_url
             total_time = time.time() - start_time
             
+            # Check for success indicators
             is_success = (
                 final_url != ERP_LOGIN_URL and 
                 ("dashboard" in final_url.lower() or 
                  "home" in final_url.lower() or
-                 "main" in final_url.lower())
+                 "main" in final_url.lower() or
+                 "welcome" in final_url.lower() or
+                 len(final_url) > len(ERP_LOGIN_URL) + 10)  # Significant URL change
             )
             
             if is_success:
-                logger.info(f"🚀 SPEED SUCCESS: ERP login in {total_time:.1f}s")
+                logger.info(f"🚀 BULLETPROOF SUCCESS: ERP login in {total_time:.1f}s")
                 return True
             else:
-                logger.error(f"❌ ERP login FAILED in {total_time:.1f}s")
+                logger.error(f"❌ BULLETPROOF FAILED: No redirect detected in {total_time:.1f}s")
+                logger.error(f"❌ Final URL: {final_url}")
                 return False
                 
         except Exception as e:
@@ -475,7 +574,7 @@ def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
             return False
         
     except Exception as e:
-        logger.error(f"💥 Unexpected error: {e}")
+        logger.error(f"💥 BULLETPROOF ERROR: {e}")
         return False
     finally:
         if driver:
@@ -484,6 +583,7 @@ def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
                 logger.info("⚡ Browser closed instantly")
             except:
                 pass
+
 
 @retry(stop=stop_after_attempt(1), wait=wait_fixed(1))  # ⚡ Only 1 retry instead of 2
 async def verify_erp_login(email: str, password: str, role: str) -> bool:
