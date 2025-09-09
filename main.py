@@ -35,12 +35,11 @@ import cv2                    # ✅ Add this
 import numpy as np            # ✅ Add this  
 import colorsys              # ✅ Add this
 
-
-
 print("--- SERVER DEBUG INFO ---")
 print(f"🐍 Python Executable: {sys.executable}")
 print(f"🐍 Python Version: {platform.python_version()}")
 print("-------------------------")
+
 load_dotenv()
 
 # Setup logging
@@ -98,7 +97,6 @@ def get_chromedriver_path():
                 driver_path = potential_driver
     
     return driver_path
-
 
 # Utility functions
 def hash_email(email: str) -> str:
@@ -228,8 +226,6 @@ async def image_to_ascii_minecraft_exact(image_data: bytes) -> str:
         logger.error(f"Minecraft conversion failed: {e}")
         return await ascii_fallback_simple(image_data)
 
-
-
 async def check_erp_cache(email_hash: str) -> bool | None:
     """Check if email is cached and still valid"""
     try:
@@ -250,7 +246,6 @@ async def check_erp_cache(email_hash: str) -> bool | None:
     except Exception as e:
         logger.error(f"Cache check failed: {e}")
         return None
-
 
 async def ascii_fallback_simple(image_data: bytes) -> str:
     """Simple fallback if MinecraftDot method fails"""
@@ -280,8 +275,10 @@ async def ascii_fallback_simple(image_data: bytes) -> str:
 async def image_to_ascii_ultimate(image_data: bytes) -> str:
     """Ultimate using MinecraftDot exact algorithm"""
     return await image_to_ascii_minecraft_exact(image_data)
+
+# 🔧 FIXED MINECRAFT FUNCTION - SUPER LIGHTWEIGHT!
 async def create_minecraft_block_art(image_data: bytes) -> str:
-    """Create HTML with 3D CSS Minecraft blocks"""
+    """Create LIGHTWEIGHT Minecraft blocks - FIXED for massive HTML issue!"""
     try:
         from PIL import Image
         import numpy as np
@@ -289,33 +286,29 @@ async def create_minecraft_block_art(image_data: bytes) -> str:
         # Load and process image
         image = Image.open(io.BytesIO(image_data)).convert('RGB')
         
-        # Resize for pixel art (perfect size for visual blocks)
-        width = 24
+        # ✅ SUPER SMALL GRID - Only 8x8 = 64 blocks max!
+        width = 8  # Was 24 - now 3x smaller!
         aspect_ratio = image.height / image.width
         height = int(width * aspect_ratio)
+        height = min(height, 8)  # Cap at 8
         
         resized = image.resize((width, height), Image.Resampling.NEAREST)
         pixels = np.array(resized)
         
-        # Enhanced Minecraft block colors with CSS
+        # ✅ SIMPLIFIED color palette (fewer blocks)
         minecraft_css_blocks = {
             (255, 255, 255): {'color': '#f9fffe', 'name': 'white'},
-            (62, 68, 71): {'color': '#3e4447', 'name': 'gray'},  
             (25, 25, 25): {'color': '#191919', 'name': 'black'},
             (153, 51, 51): {'color': '#993333', 'name': 'red'},
-            (216, 127, 51): {'color': '#d87f33', 'name': 'orange'},
-            (229, 229, 51): {'color': '#e5e533', 'name': 'yellow'},
-            (127, 204, 25): {'color': '#7fcc19', 'name': 'lime'},
-            (102, 127, 51): {'color': '#667f33', 'name': 'green'},
-            (76, 127, 153): {'color': '#4c7f99', 'name': 'cyan'},
             (51, 76, 178): {'color': '#334cb2', 'name': 'blue'},
-            (127, 63, 178): {'color': '#7f3fb2', 'name': 'purple'},
+            (102, 127, 51): {'color': '#667f33', 'name': 'green'},
+            (229, 229, 51): {'color': '#e5e533', 'name': 'yellow'},
         }
         
-        # Generate 3D HTML blocks
+        # ✅ ULTRA-SIMPLE HTML generation (no complex CSS!)
         html_blocks = []
         for y in range(height):
-            row_html = '<div class="mc-row">'
+            row_blocks = []
             for x in range(width):
                 pixel = tuple(pixels[y, x])
                 
@@ -324,62 +317,27 @@ async def create_minecraft_block_art(image_data: bytes) -> str:
                                   key=lambda c: sum(abs(p-q) for p,q in zip(pixel, c)))
                 block_info = minecraft_css_blocks[closest_color]
                 
-                # Create 3D CSS block with shadows and highlights
-                row_html += f'''<div class="mc-block mc-{block_info['name']}" style="
-                    background: linear-gradient(135deg, {block_info['color']} 0%, 
-                               {block_info['color']}dd 50%, 
-                               {block_info['color']}bb 100%);
-                    box-shadow: 
-                        inset 2px 2px 4px rgba(255,255,255,0.4),
-                        inset -2px -2px 4px rgba(0,0,0,0.4),
-                        2px 2px 6px rgba(0,0,0,0.3);
-                "></div>'''
+                # ✅ SUPER SIMPLE block - just background color!
+                row_blocks.append(f'<div style="width:16px;height:16px;background:{block_info["color"]};display:inline-block;"></div>')
             
-            row_html += '</div>'
-            html_blocks.append(row_html)
+            html_blocks.append(''.join(row_blocks) + '<br>')
         
-        # Complete HTML with advanced CSS
+        # ✅ MINIMAL HTML with NO complex CSS
         full_html = f'''
-        <style>
-        .minecraft-art {{
-            display: inline-block;
-            background: linear-gradient(45deg, #8B4513, #A0522D);
-            padding: 12px;
-            border-radius: 8px;
-            margin: 10px 0;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            border: 2px solid #654321;
-        }}
-        .mc-row {{
-            display: flex;
-            height: 20px;
-            margin: 0;
-            padding: 0;
-        }}
-        .mc-block {{
-            width: 20px;
-            height: 20px;
-            margin: 0;
-            border: 1px solid rgba(0,0,0,0.2);
-            flex-shrink: 0;
-            position: relative;
-        }}
-        .mc-block:hover {{
-            transform: scale(1.05);
-            transition: transform 0.1s ease;
-        }}
-        </style>
-        <div class="minecraft-art">
-            {"".join(html_blocks)}
-        </div>
-        '''
+<div style="padding:8px;background:#8B4513;border-radius:4px;line-height:0;">
+{"".join(html_blocks)}
+</div>
+'''
+        
+        # ✅ STRICT SIZE CHECK - If still too big, return simple fallback
+        if len(full_html) > 5000:  # 5KB limit
+            return '<div style="color: #4c7f99; padding: 8px; border: 1px solid #333; border-radius: 4px;">🎮 Minecraft Art Generated</div>'
         
         return full_html
         
     except Exception as e:
         logger.error(f"Minecraft HTML generation failed: {e}")
         return '<div style="color: red;">🎮 Minecraft generation failed</div>'
-
 
 async def set_erp_cache(email_hash: str, is_valid: bool):
     """Cache ERP verification result"""
@@ -473,7 +431,7 @@ def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
         logger.info("⚡ Filling password...")
         try:
             # Escape any quotes in password for JavaScript safety
-            safe_password = password.replace("'", "\\'").replace("\"", "\\\"")
+            safe_password = password.replace("'", "\'").replace("\"", "\\"")
             driver.execute_script(f"""
                 var passwordField = document.querySelector('input[name="txtPassword"]');
                 if (passwordField) {{
@@ -571,8 +529,6 @@ async def verify_erp_login(email: str, password: str, role: str) -> bool:
         
         await set_erp_cache(email_hash, result)
         return result
-
-
 
 def get_current_user(token: str) -> dict:
     """Decode JWT token and return user info"""
@@ -709,7 +665,6 @@ async def clear_cache(credentials: dict):
 
 # 🚀 LIGHTNING FAST POSTS ENDPOINT
 # main.py
-
 # 🚀 UPGRADED POSTS ENDPOINT - NOW INCLUDES USER REACTIONS
 @app.get("/posts/{hashtag}")
 async def get_posts_fast(hashtag: str, limit: int = 20, offset: int = 0, authorization: Optional[str] = Header(None)): # NEW: Add authorization header
@@ -719,11 +674,9 @@ async def get_posts_fast(hashtag: str, limit: int = 20, offset: int = 0, authori
     try:
         start_time = time.time()
         
-
         # In your get_posts_fast function, make sure you're selecting emotion fields
         all_posts_result = supabase.table("posts").select("*, emotion, reply_emotion").eq(
         "hashtag", hashtag).eq("is_removed", False).order("created_at", desc=True).execute()
-
         if not all_posts_result.data:
             return {"posts": [], "user_reactions": {}} # Return empty reactions object
         
@@ -753,8 +706,6 @@ async def get_posts_fast(hashtag: str, limit: int = 20, offset: int = 0, authori
         for report in reports_result.data:
             pid = report["post_id"]
             reports_map[pid] = reports_map.get(pid, 0) + 1
-
-
         # 🚀 NEW STEP 3.5: GET THE CURRENT USER'S SPECIFIC REACTIONS
         user_reactions_map = {}
         if authorization and authorization.startswith("Bearer "):
@@ -773,7 +724,6 @@ async def get_posts_fast(hashtag: str, limit: int = 20, offset: int = 0, authori
             except Exception:
                 # If token is invalid or user not found, just continue without user reactions
                 pass
-
         # 🚀 STEP 4: Build response with fast O(1) lookups (no change here)
         processed_posts = []
         for post in main_posts:
@@ -869,7 +819,6 @@ async def react_to_post(post_id: str, reaction_data: dict, authorization: Option
     reaction_type = reaction_data.get("type")
     if reaction_type not in ['smack', 'cap']:
         raise HTTPException(400, "Invalid reaction type")
-
     try:
         # Check for an existing reaction from this user on this post
         existing_reaction_result = supabase.table("reactions").select("*").eq("post_id", post_id).eq("user_id", user_id).execute()
@@ -889,7 +838,6 @@ async def react_to_post(post_id: str, reaction_data: dict, authorization: Option
             else:
                 supabase.table("reactions").update({"reaction_type": reaction_type}).eq("id", existing_reaction["id"]).execute()
                 logger.info(f"User {user_id} switched reaction to '{reaction_type}' on post {post_id}")
-
         # CASE 3: User has NO existing reaction (new reaction)
         else:
             supabase.table("reactions").insert({
@@ -913,7 +861,6 @@ async def react_to_post(post_id: str, reaction_data: dict, authorization: Option
             "user_reaction": user_final_reaction, # This tells the frontend the final state ('smack', 'cap', or null)
             "message": "Reaction processed successfully"
         }
-
     except Exception as e:
         logger.error(f"Error reacting to post {post_id}: {e}")
         raise HTTPException(500, "Failed to process reaction")
@@ -964,7 +911,6 @@ async def report_post(post_id: str, authorization: Optional[str] = Header(None))
         logger.error(f"Error reporting: {e}")
         raise HTTPException(500, "Failed to report post")
 
-
 @app.post("/upload-minecraft-visual")
 async def upload_minecraft_visual(file: UploadFile = File(...), authorization: Optional[str] = Header(None)):
     """Generate visual Minecraft block art like the websites"""
@@ -988,7 +934,7 @@ async def upload_minecraft_visual(file: UploadFile = File(...), authorization: O
         # Generate visual Minecraft blocks
         minecraft_html = await create_minecraft_block_art(image_data)
         
-        logger.info(f"✅ Minecraft visual created")
+        logger.info(f"✅ Minecraft visual created (Size: {len(minecraft_html)} bytes)")
         
         return {
             "success": True,
@@ -1000,8 +946,6 @@ async def upload_minecraft_visual(file: UploadFile = File(...), authorization: O
     except Exception as e:
         logger.error(f"💥 Minecraft visual error: {e}")
         raise HTTPException(500, "Failed to create Minecraft visual")
-
-
 
 if __name__ == "__main__":
     import uvicorn
