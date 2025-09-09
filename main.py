@@ -5,7 +5,7 @@ import asyncio
 import uuid
 import logging
 import bleach
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 import math
 from concurrent.futures import ThreadPoolExecutor
@@ -47,7 +47,7 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="College Social API", version="2.3.0")
+app = FastAPI(title="College Social API", version="2.4.0")
 
 # Environment and configuration
 ENV = os.getenv("ENV", "development")
@@ -63,8 +63,8 @@ if not all([SUPABASE_URL, SUPABASE_ANON_KEY, JWT_SECRET]):
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 # ⚡ SPEED HACK: Increase concurrency
-semaphore = asyncio.Semaphore(10)  # Was 3, now 10!
-executor = ThreadPoolExecutor(max_workers=8)  # Was 4, now 8!
+semaphore = asyncio.Semaphore(10)
+executor = ThreadPoolExecutor(max_workers=8)
 
 # CORS middleware
 app.add_middleware(
@@ -226,9 +226,9 @@ async def image_to_ascii_minecraft_exact(image_data: bytes) -> str:
         logger.error(f"Minecraft conversion failed: {e}")
         return await ascii_fallback_simple(image_data)
 
-# ⚡ SPEED HACK: Extended ERP cache (24 hours instead of 1 hour)
+# ⚡ FIXED ERP CACHE - 1 hour only!
 async def check_erp_cache(email_hash: str) -> bool | None:
-    """Check if email is cached and still valid"""
+    """Check ERP cache - 1 hour expiry for more frequent verification"""
     try:
         result = supabase.table("erp_cache").select("*").eq("email_hash", email_hash).execute()
         
@@ -237,11 +237,11 @@ async def check_erp_cache(email_hash: str) -> bool | None:
             expires_at = datetime.fromisoformat(cache_entry["expires_at"].replace('Z', '+00:00'))
             
             if datetime.now(expires_at.tzinfo) < expires_at:
-                logger.info(f"⚡ CACHE HIT - Skipping ERP verification for {email_hash[:8]}...")
+                logger.info(f"⚡ CACHE HIT for {email_hash[:8]}...")
                 return cache_entry["is_valid"]
             else:
                 supabase.table("erp_cache").delete().eq("email_hash", email_hash).execute()
-                logger.info(f"Cache expired for email hash: {email_hash[:8]}...")
+                logger.info(f"Cache expired for {email_hash[:8]}...")
         
         return None
     except Exception as e:
@@ -328,9 +328,9 @@ async def create_minecraft_block_art(image_data: bytes) -> str:
         return '<div style="color: red;">🎮 Minecraft generation failed</div>'
 
 async def set_erp_cache(email_hash: str, is_valid: bool):
-    """Cache ERP verification result for 24 hours"""
+    """Cache ERP result for 1 hour only"""
     try:
-        expires_at = datetime.now() + timedelta(hours=24)  # ⚡ 24 hours instead of 1!
+        expires_at = datetime.now() + timedelta(hours=1)  # Only 1 hour!
         
         supabase.table("erp_cache").upsert({
             "email_hash": email_hash,
@@ -338,11 +338,11 @@ async def set_erp_cache(email_hash: str, is_valid: bool):
             "expires_at": expires_at.isoformat()
         }).execute()
         
-        logger.info(f"✅ Cached ERP result for 24 hours: {email_hash[:8]}...")
+        logger.info(f"✅ Cached ERP result for 1 hour: {email_hash[:8]}...")
     except Exception as e:
         logger.error(f"Cache set failed: {e}")
 
-# ⚡ SUPER SPEED HACK: ULTRA FAST ERP verification
+# ⚡ BULLETPROOF ERP verification
 def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
     """PRODUCTION BULLETPROOF ERP verification - No more timeouts!"""
     
@@ -372,8 +372,8 @@ def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
         chrome_options.add_argument("--disable-renderer-backgrounding")
         
         # ⚡ TIMEOUT FIX OPTIONS
-        chrome_options.add_argument("--disable-images")  # No images = faster
-        chrome_options.add_argument("--disable-javascript")  # Minimal JS
+        chrome_options.add_argument("--disable-images")
+        chrome_options.add_argument("--disable-javascript")
         chrome_options.add_argument("--disable-plugins")
         chrome_options.add_argument("--disable-java")
         chrome_options.add_argument("--aggressive-cache-discard")
@@ -390,7 +390,6 @@ def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
         chrome_options.add_argument("--disable-infobars")
         chrome_options.add_argument("--disable-features=TranslateUI")
         chrome_options.add_argument("--disable-ipc-flooding-protection")
-        # ⚡ NETWORK & DNS SPEEDUP
         chrome_options.add_argument("--dns-prefetch-disable")
         chrome_options.add_argument("--disable-web-resources")
         chrome_options.add_argument("--disable-client-side-phishing-detection")
@@ -400,7 +399,7 @@ def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
             "profile.default_content_setting_values": {
                 "notifications": 2,
                 "images": 2,
-                "javascript": 1,  # Allow JS for form interactions
+                "javascript": 1,
                 "plugins": 2,
                 "popups": 2,
                 "geolocation": 2,
@@ -416,7 +415,7 @@ def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
         chrome_options.add_experimental_option('useAutomationExtension', False)
         
         # 🔧 PAGE LOAD STRATEGY - EAGER MODE
-        chrome_options.page_load_strategy = 'eager'  # Don't wait for all resources
+        chrome_options.page_load_strategy = 'eager'
         
         if ENV == "production":
             chrome_options.binary_location = "/usr/bin/google-chrome-stable"
@@ -424,15 +423,15 @@ def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
         service = Service(ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=chrome_options)
         
-        # ⚡ AGGRESSIVE TIMEOUTS - PRODUCTION OPTIMIZED
-        driver.set_page_load_timeout(8)  # 8 seconds max page load
-        driver.implicitly_wait(2)  # 2 seconds max wait
-        driver.set_script_timeout(3)  # 3 seconds max script execution
+        # ⚡ AGGRESSIVE TIMEOUTS
+        driver.set_page_load_timeout(8)
+        driver.implicitly_wait(2)
+        driver.set_script_timeout(3)
         
         logger.info(f"⚡ BULLETPROOF: Navigating to ERP...")
         driver.get(ERP_LOGIN_URL)
         
-        wait = WebDriverWait(driver, 3)  # 3 seconds max wait
+        wait = WebDriverWait(driver, 3)
         
         # ⚡ IMMEDIATE PRESENCE CHECK
         try:
@@ -441,7 +440,7 @@ def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
             logger.error("❌ Page failed to load body tag")
             return False
         
-        # STEP 1: Select Role (with timeout protection)
+        # STEP 1: Select Role
         logger.info(f"⚡ BULLETPROOF: Selecting role: {role}")
         try:
             if role.lower() == "student":
@@ -453,9 +452,8 @@ def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
             logger.info(f"✅ Role selected: {role}")
         except Exception as e:
             logger.warning(f"Role selection failed: {e}")
-            # Continue anyway - some sites might not have role selection
         
-        # STEP 2: Fill Username (with timeout protection)
+        # STEP 2: Fill Username
         logger.info("⚡ BULLETPROOF: Filling username...")
         try:
             username_elem = wait.until(EC.element_to_be_clickable((By.XPATH, "//input[@type='text'][1]")))
@@ -466,12 +464,11 @@ def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
             logger.error(f"❌ Username filling failed: {e}")
             return False
         
-        # STEP 3: Fill Password (bulletproof base64 method)
+        # STEP 3: Fill Password
         logger.info("⚡ BULLETPROOF: Filling password...")
         try:
             safe_password = base64.b64encode(password.encode()).decode()
             
-            # Try multiple password field selectors
             password_selectors = [
                 'input[name="txtPassword"]',
                 'input[type="password"]',
@@ -506,7 +503,7 @@ def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
             logger.error(f"❌ Password filling failed: {e}")
             return False
         
-        # STEP 4: Submit Form (bulletproof submission)
+        # STEP 4: Submit Form
         logger.info("⚡ BULLETPROOF: Submitting form...")
         try:
             submit_selectors = [
@@ -537,12 +534,11 @@ def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
             logger.error(f"❌ Form submission failed: {e}")
             return False
         
-        # STEP 5: Quick Result Check (3 seconds max)
+        # STEP 5: Quick Result Check
         logger.info("⚡ BULLETPROOF: Checking login result...")
         try:
-            # Wait for URL change with timeout
             start_check = time.time()
-            while time.time() - start_check < 3:  # 3 seconds max
+            while time.time() - start_check < 3:
                 current_url = driver.current_url
                 if current_url != ERP_LOGIN_URL:
                     break
@@ -551,14 +547,13 @@ def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
             final_url = driver.current_url
             total_time = time.time() - start_time
             
-            # Check for success indicators
             is_success = (
                 final_url != ERP_LOGIN_URL and 
                 ("dashboard" in final_url.lower() or 
                  "home" in final_url.lower() or
                  "main" in final_url.lower() or
                  "welcome" in final_url.lower() or
-                 len(final_url) > len(ERP_LOGIN_URL) + 10)  # Significant URL change
+                 len(final_url) > len(ERP_LOGIN_URL) + 10)
             )
             
             if is_success:
@@ -566,7 +561,6 @@ def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
                 return True
             else:
                 logger.error(f"❌ BULLETPROOF FAILED: No redirect detected in {total_time:.1f}s")
-                logger.error(f"❌ Final URL: {final_url}")
                 return False
                 
         except Exception as e:
@@ -584,10 +578,9 @@ def verify_erp_selenium_sync(email: str, password: str, role: str) -> bool:
             except:
                 pass
 
-
-@retry(stop=stop_after_attempt(1), wait=wait_fixed(1))  # ⚡ Only 1 retry instead of 2
+@retry(stop=stop_after_attempt(1), wait=wait_fixed(1))
 async def verify_erp_login(email: str, password: str, role: str) -> bool:
-    """SPEED OPTIMIZED ERP verification with extended caching"""
+    """ERP verification with 1-hour caching"""
     async with semaphore:
         email_hash = get_email_hash(email)
         
@@ -607,23 +600,43 @@ async def verify_erp_login(email: str, password: str, role: str) -> bool:
         await set_erp_cache(email_hash, result)
         return result
 
+# ✅ ENHANCED JWT TOKEN HANDLING
 def get_current_user(token: str) -> dict:
-    """Decode JWT token and return user info"""
+    """Enhanced JWT decoder with better error handling"""
     try:
+        # Decode without verification first to check expiry
+        unverified_payload = jwt.decode(token, options={"verify_signature": False})
+        
+        # Check if token is expired
+        exp_timestamp = unverified_payload.get('exp')
+        if exp_timestamp:
+            exp_datetime = datetime.fromtimestamp(exp_timestamp, tz=timezone.utc)
+            now = datetime.now(timezone.utc)
+            
+            if now >= exp_datetime:
+                logger.warning(f"Token expired at {exp_datetime}, current time: {now}")
+                raise HTTPException(401, "Token expired - please login again")
+        
+        # Now verify with secret
         payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
         return {
             "user_id": payload["user_id"],
             "username": payload["username"]
         }
     except jwt.ExpiredSignatureError:
-        raise HTTPException(401, "Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(401, "Invalid token")
+        logger.warning("JWT token expired")
+        raise HTTPException(401, "Token expired - please login again")
+    except jwt.InvalidTokenError as e:
+        logger.error(f"Invalid JWT token: {e}")
+        raise HTTPException(401, "Invalid token - please login again")
+    except Exception as e:
+        logger.error(f"JWT decode error: {e}")
+        raise HTTPException(401, "Authentication failed - please login again")
 
 # API Routes
 @app.get("/")
 async def root():
-    return {"message": "College Social API v2.3 - SPEED MODE! 🚀⚡"}
+    return {"message": "College Social API v2.4 - BULLETPROOF MODE! 🚀⚡"}
 
 @app.get("/health")
 async def health_check():
@@ -639,9 +652,46 @@ async def health_check():
     except Exception as e:
         raise HTTPException(500, f"Health check failed: {str(e)}")
 
+# ✅ TOKEN REFRESH ENDPOINT
+@app.post("/auth/refresh")
+async def refresh_token(authorization: Optional[str] = Header(None)):
+    """Refresh expired JWT token"""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "No token provided")
+    
+    token = authorization.replace("Bearer ", "")
+    
+    try:
+        # Decode expired token (skip signature verification)
+        payload = jwt.decode(token, options={"verify_signature": False})
+        user_id = payload.get("user_id")
+        username = payload.get("username")
+        
+        if not user_id or not username:
+            raise HTTPException(401, "Invalid token structure")
+        
+        # Generate new token with 1 hour expiry
+        new_token = jwt.encode({
+            "user_id": user_id,
+            "username": username,
+            "exp": datetime.utcnow().timestamp() + 3600  # 1 hour
+        }, JWT_SECRET, algorithm="HS256")
+        
+        logger.info(f"Token refreshed for user: {username}")
+        
+        return {
+            "success": True,
+            "token": new_token,
+            "expires_in": 3600
+        }
+        
+    except Exception as e:
+        logger.error(f"Token refresh failed: {e}")
+        raise HTTPException(401, "Token refresh failed - please login again")
+
 @app.post("/auth/login")
 async def login(credentials: dict):
-    """⚡ SPEED OPTIMIZED Login endpoint"""
+    """⚡ BULLETPROOF Login endpoint"""
     email = sanitize_input(credentials.get("email", "")).lower()
     password = credentials.get("password", "")
     role = sanitize_input(credentials.get("role", "student")).lower()
@@ -657,10 +707,9 @@ async def login(credentials: dict):
     if role not in valid_roles:
         raise HTTPException(400, f"Invalid role. Must be one of: {', '.join(valid_roles)}")
     
-    logger.info(f"⚡ SPEED LOGIN: Starting for {email} as {role}")
+    logger.info(f"⚡ BULLETPROOF LOGIN: Starting for {email} as {role}")
     
     try:
-        # ⚡ This will use 24-hour cache if available!
         is_valid = await verify_erp_login(email, password, role)
         
         if not is_valid:
@@ -708,7 +757,7 @@ async def login(credentials: dict):
         token = jwt.encode({
             "user_id": user_id,
             "username": username,
-            "exp": datetime.utcnow().timestamp() + 86400
+            "exp": datetime.utcnow().timestamp() + 3600  # 1 hour expiry
         }, JWT_SECRET, algorithm="HS256")
         
         logger.info(f"🔑 JWT token generated for {username}")
@@ -717,8 +766,8 @@ async def login(credentials: dict):
             "success": True,
             "token": token,
             "username": username,
-            "message": "⚡ SPEED LOGIN: Welcome to College Social!",
-            "expires_in": 86400
+            "message": "Welcome to College Social!",
+            "expires_in": 3600
         }
         
     except Exception as e:
@@ -736,7 +785,6 @@ async def clear_cache(credentials: dict):
     
     try:
         supabase.table("erp_cache").delete().eq("email_hash", email_hash).execute()
-        # ⚡ Also clear post cache
         global POST_CACHE
         POST_CACHE.clear()
         logger.info(f"🧹 All caches cleared for {email}")
@@ -745,14 +793,14 @@ async def clear_cache(credentials: dict):
         logger.error(f"Cache clear failed: {e}")
         raise HTTPException(500, "Failed to clear cache")
 
-# ⚡ SUPER SPEED OPTIMIZED POSTS ENDPOINT WITH CACHING!
+# ⚡ LIGHTNING FAST POSTS ENDPOINT
 @app.get("/posts/{hashtag}")
 async def get_posts_lightning_fast(hashtag: str, limit: int = 20, offset: int = 0, authorization: Optional[str] = Header(None)):
     """⚡ LIGHTNING FAST posts with memory cache"""
     hashtag = sanitize_input(hashtag)
     cache_key = get_cache_key(hashtag)
     
-    # ⚡ Check memory cache first
+    # Check memory cache first
     if cache_key in POST_CACHE and is_cache_valid(POST_CACHE[cache_key]['timestamp']):
         logger.info(f"⚡ CACHE HIT: Returning cached posts for #{hashtag}")
         cached_data = POST_CACHE[cache_key]['data']
@@ -777,6 +825,12 @@ async def get_posts_lightning_fast(hashtag: str, limit: int = 20, offset: int = 
                     if user_reactions_result.data:
                         for r in user_reactions_result.data:
                             user_reactions_map[r['post_id']] = r['reaction_type']
+            except HTTPException as e:
+                if e.status_code == 401:
+                    # Token expired, return empty user reactions
+                    pass
+                else:
+                    raise e
             except Exception:
                 pass
         
@@ -789,10 +843,9 @@ async def get_posts_lightning_fast(hashtag: str, limit: int = 20, offset: int = 
     try:
         start_time = time.time()
         
-        # ⚡ SPEED: Single query with better indexing
         all_posts_result = supabase.table("posts").select("*").eq(
             "hashtag", hashtag
-        ).eq("is_removed", False).order("created_at", desc=True).limit(200).execute()  # Limit to 200 total
+        ).eq("is_removed", False).order("created_at", desc=True).limit(200).execute()
         
         if not all_posts_result.data:
             empty_result = {"posts": [], "user_reactions": {}}
@@ -805,7 +858,7 @@ async def get_posts_lightning_fast(hashtag: str, limit: int = 20, offset: int = 
         main_posts = [p for p in all_posts_result.data if not p.get("parent_id")][:limit]
         all_post_ids = [p["id"] for p in all_posts_result.data]
         
-        # ⚡ SPEED: Parallel database queries
+        # Get reactions and reports
         reactions_task = supabase.table("reactions").select("post_id, reaction_type").in_("post_id", all_post_ids).execute()
         reports_task = supabase.table("reports").select("post_id").in_("post_id", all_post_ids).execute()
         
@@ -838,6 +891,12 @@ async def get_posts_lightning_fast(hashtag: str, limit: int = 20, offset: int = 
                 if user_reactions_result.data:
                     for r in user_reactions_result.data:
                         user_reactions_map[r['post_id']] = r['reaction_type']
+            except HTTPException as e:
+                if e.status_code == 401:
+                    # Token expired, return empty user reactions
+                    pass
+                else:
+                    raise e
             except Exception:
                 pass
         
@@ -871,7 +930,7 @@ async def get_posts_lightning_fast(hashtag: str, limit: int = 20, offset: int = 
             "total": len(processed_posts)
         }
         
-        # ⚡ Cache the result (without user_reactions)
+        # Cache the result
         POST_CACHE[cache_key] = {
             'data': result_data,
             'timestamp': time.time()
@@ -922,7 +981,7 @@ async def create_post_instant(post_data: dict, authorization: Optional[str] = He
         
         result = supabase.table("posts").insert(post_insert).execute()
         
-        # ⚡ Invalidate cache for this hashtag
+        # Invalidate cache for this hashtag
         cache_key = get_cache_key(hashtag)
         if cache_key in POST_CACHE:
             del POST_CACHE[cache_key]
@@ -978,8 +1037,7 @@ async def react_to_post_instant(post_id: str, reaction_data: dict, authorization
         new_smacks = smacks_count_res.count
         new_caps = caps_count_res.count
         
-        # ⚡ Selective cache invalidation - only if reaction counts changed significantly
-        # We could keep cache and just update the counts, but for simplicity, we'll clear
+        # Invalidate relevant caches
         for cache_key in list(POST_CACHE.keys()):
             if post_id in str(POST_CACHE[cache_key]['data']):
                 del POST_CACHE[cache_key]
@@ -991,7 +1049,7 @@ async def react_to_post_instant(post_id: str, reaction_data: dict, authorization
             "smacks": new_smacks,
             "caps": new_caps,
             "user_reaction": user_final_reaction,
-            "message": "⚡ Instant reaction processed"
+            "message": "Reaction processed successfully"
         }
     except Exception as e:
         logger.error(f"Error reacting to post {post_id}: {e}")
@@ -1019,7 +1077,6 @@ async def report_post(post_id: str, authorization: Optional[str] = Header(None))
             supabase.table("posts").update({"is_removed": True}).eq("id", post_id).execute()
             logger.info(f"🚨 Post auto-removed: {report_count} reports")
             
-            # ⚡ Clear all cache since post was removed
             POST_CACHE.clear()
             
             return {
@@ -1055,7 +1112,7 @@ async def upload_minecraft_visual(file: UploadFile = File(...), authorization: O
     if not file.content_type or not file.content_type.startswith('image/'):
         raise HTTPException(400, "File must be an image")
     
-    if file.size and file.size > 2 * 1024 * 1024:  # ⚡ Reduced to 2MB
+    if file.size and file.size > 2 * 1024 * 1024:
         raise HTTPException(400, "Image too large (max 2MB)")
     
     try:
@@ -1069,7 +1126,7 @@ async def upload_minecraft_visual(file: UploadFile = File(...), authorization: O
         return {
             "success": True,
             "minecraft_html": minecraft_html,
-            "message": "⚡ Instant Minecraft visual ready!",
+            "message": "Minecraft visual ready!",
             "type": "minecraft_visual"
         }
         
@@ -1079,9 +1136,9 @@ async def upload_minecraft_visual(file: UploadFile = File(...), authorization: O
 
 if __name__ == "__main__":
     import uvicorn
-    logger.info("⚡ Starting College Social API v2.3 - SPEED MODE...")
+    logger.info("⚡ Starting College Social API v2.4 - BULLETPROOF MODE...")
     logger.info(f"📊 Environment: {ENV}")
     logger.info(f"📊 Supabase URL: {SUPABASE_URL}")
     logger.info(f"🔐 ERP URL: {ERP_LOGIN_URL or 'Test mode'}")
-    logger.info("⚡ SPEED OPTIMIZATIONS: ✅ ERP 24h cache ✅ Post memory cache ✅ Reduced timeouts")
+    logger.info("⚡ BULLETPROOF: ✅ Enhanced JWT ✅ Token refresh ✅ 1h ERP cache ✅ Bulletproof Chrome")
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
