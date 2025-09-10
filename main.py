@@ -794,6 +794,127 @@ async def clear_cache(credentials: dict):
         raise HTTPException(500, "Failed to clear cache")
 
 # ⚡ LIGHTNING FAST POSTS ENDPOINT
+
+# Add this new endpoint to your existing backend
+
+@app.get("/sentiment-analysis/{hashtag}")
+async def get_sentiment_analysis(hashtag: str, authorization: Optional[str] = Header(None)):
+    """Get sentiment analysis for posts and their replies from existing data"""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Authorization token required")
+    
+    token = authorization.replace("Bearer ", "")
+    user = get_current_user(token)
+    
+    hashtag = sanitize_input(hashtag)
+    
+    try:
+        # Get all posts for the hashtag with their emotion data
+        all_posts_result = supabase.table("posts").select("""
+            id, content, username, created_at, emotion, reply_emotion, parent_id
+        """).eq("hashtag", hashtag).eq("is_removed", False).order("created_at", desc=True).execute()
+        
+        if not all_posts_result.data:
+            return {
+                "hashtag": hashtag,
+                "posts": [],
+                "summary": {"total": 0, "positive": 0, "negative": 0, "neutral": 0, "unknown": 0}
+            }
+        
+        # Separate main posts from replies
+        main_posts = [p for p in all_posts_result.data if not p.get("parent_id")]
+        all_replies = [p for p in all_posts_result.data if p.get("parent_id")]
+        
+        sentiment_data = []
+        summary_stats = {"positive": 0, "negative": 0, "neutral": 0, "unknown": 0}
+        
+        for post in main_posts:
+            # Get replies for this post
+            post_replies = [r for r in all_replies if r.get("parent_id") == post['id']]
+            
+            # Map emotion names to standardized format
+            post_emotion = post.get('emotion') or 'unknown'
+            if post_emotion == 'joy':
+                post_emotion = 'positive'
+            elif post_emotion in ['sadness', 'anger', 'fear']:
+                post_emotion = 'negative'
+            elif post_emotion in ['curiosity', 'admiration']:
+                post_emotion = 'neutral'
+            elif post_emotion is None:
+                post_emotion = 'unknown'
+            
+            # Count sentiment for summary
+            if post_emotion in summary_stats:
+                summary_stats[post_emotion] += 1
+            else:
+                summary_stats['unknown'] += 1
+            
+            # Process reply emotions
+            reply_breakdown = {"positive": 0, "negative": 0, "neutral": 0, "unknown": 0}
+            reply_details = []
+            
+            for reply in post_replies:
+                reply_emotion = reply.get('emotion') or 'unknown'
+                
+                # Map reply emotions
+                if reply_emotion == 'joy':
+                    reply_emotion = 'positive'
+                elif reply_emotion in ['sadness', 'anger', 'fear']:
+                    reply_emotion = 'negative'
+                elif reply_emotion in ['curiosity', 'admiration']:
+                    reply_emotion = 'neutral'
+                elif reply_emotion is None:
+                    reply_emotion = 'unknown'
+                
+                if reply_emotion in reply_breakdown:
+                    reply_breakdown[reply_emotion] += 1
+                else:
+                    reply_breakdown['unknown'] += 1
+                
+                reply_details.append({
+                    "content": reply['content'][:100] + "..." if len(reply['content']) > 100 else reply['content'],
+                    "emotion": reply_emotion,
+                    "username": reply['username'],
+                    "created_at": reply['created_at']
+                })
+            
+            # Determine overall reply sentiment from post's reply_emotion field
+            overall_reply_emotion = post.get('reply_emotion') or 'no_replies'
+            if overall_reply_emotion and overall_reply_emotion != 'no_replies':
+                if overall_reply_emotion == 'joy':
+                    overall_reply_emotion = 'positive'
+                elif overall_reply_emotion in ['sadness', 'anger', 'fear']:
+                    overall_reply_emotion = 'negative'
+                elif overall_reply_emotion in ['curiosity', 'admiration', 'neutral']:
+                    overall_reply_emotion = 'neutral'
+            
+            sentiment_data.append({
+                "post_id": post['id'],
+                "content": post['content'][:150] + "..." if len(post['content']) > 150 else post['content'],
+                "username": post['username'],
+                "created_at": post['created_at'],
+                "post_emotion": post_emotion,
+                "replies_count": len(post_replies),
+                "overall_reply_emotion": overall_reply_emotion,
+                "reply_breakdown": reply_breakdown,
+                "reply_details": reply_details[:10]  # Limit to 10 replies for performance
+            })
+        
+        logger.info(f"⚡ Sentiment analysis completed for #{hashtag}: {len(sentiment_data)} posts analyzed")
+        
+        return {
+            "hashtag": hashtag,
+            "posts": sentiment_data,
+            "summary": {
+                "total": len(sentiment_data),
+                **summary_stats
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Sentiment analysis failed: {e}")
+        raise HTTPException(500, "Failed to analyze sentiment")
+
 @app.get("/posts/{hashtag}")
 async def get_posts_lightning_fast(hashtag: str, limit: int = 20, offset: int = 0, authorization: Optional[str] = Header(None)):
     """⚡ LIGHTNING FAST posts with memory cache"""
