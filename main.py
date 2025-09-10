@@ -799,7 +799,7 @@ async def clear_cache(credentials: dict):
 
 @app.get("/sentiment-analysis/{hashtag}")
 async def get_sentiment_analysis(hashtag: str, authorization: Optional[str] = Header(None)):
-    """Get sentiment analysis for posts and their replies from existing data"""
+    """Get sentiment analysis with SMART emotion averaging - no more unknown!"""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(401, "Authorization token required")
     
@@ -838,8 +838,8 @@ async def get_sentiment_analysis(hashtag: str, authorization: Optional[str] = He
                 post_emotion = 'positive'
             elif post_emotion in ['sadness', 'anger', 'fear']:
                 post_emotion = 'negative'
-            elif post_emotion in ['curiosity', 'admiration']:
-                post_emotion = 'neutral'
+            elif post_emotion in ['curiosity', 'admiration', 'uncertain', 'annoyance']:
+                post_emotion = post_emotion  # Keep specific emotions
             elif post_emotion is None:
                 post_emotion = 'unknown'
             
@@ -849,44 +849,82 @@ async def get_sentiment_analysis(hashtag: str, authorization: Optional[str] = He
             else:
                 summary_stats['unknown'] += 1
             
-            # Process reply emotions
-            reply_breakdown = {"positive": 0, "negative": 0, "neutral": 0, "unknown": 0}
+            # Process reply emotions - COLLECT ALL RAW EMOTIONS
+            reply_breakdown = {"positive": 0, "negative": 0, "neutral": 0, "unknown": 0, "curious": 0, "uncertain": 0, "annoyance": 0, "admiration": 0}
             reply_details = []
+            raw_emotions = []
             
             for reply in post_replies:
                 reply_emotion = reply.get('emotion') or 'unknown'
+                raw_emotions.append(reply_emotion)  # Keep original emotions for smart averaging
                 
-                # Map reply emotions
+                # Map reply emotions but keep specifics
+                mapped_emotion = reply_emotion
                 if reply_emotion == 'joy':
-                    reply_emotion = 'positive'
+                    mapped_emotion = 'positive'
+                    reply_breakdown['positive'] += 1
                 elif reply_emotion in ['sadness', 'anger', 'fear']:
-                    reply_emotion = 'negative'
-                elif reply_emotion in ['curiosity', 'admiration']:
-                    reply_emotion = 'neutral'
-                elif reply_emotion is None:
-                    reply_emotion = 'unknown'
-                
-                if reply_emotion in reply_breakdown:
-                    reply_breakdown[reply_emotion] += 1
+                    mapped_emotion = 'negative'
+                    reply_breakdown['negative'] += 1
+                elif reply_emotion == 'curiosity':
+                    mapped_emotion = 'curious'
+                    reply_breakdown['curious'] += 1
+                elif reply_emotion == 'neutral':
+                    mapped_emotion = 'neutral'
+                    reply_breakdown['neutral'] += 1
+                elif reply_emotion == 'uncertain':
+                    mapped_emotion = 'uncertain'
+                    reply_breakdown['uncertain'] += 1
+                elif reply_emotion == 'annoyance':
+                    mapped_emotion = 'annoyance'
+                    reply_breakdown['annoyance'] += 1
+                elif reply_emotion == 'admiration':
+                    mapped_emotion = 'admiration'
+                    reply_breakdown['admiration'] += 1
                 else:
+                    mapped_emotion = 'unknown'
                     reply_breakdown['unknown'] += 1
                 
                 reply_details.append({
                     "content": reply['content'][:100] + "..." if len(reply['content']) > 100 else reply['content'],
-                    "emotion": reply_emotion,
+                    "emotion": mapped_emotion,
                     "username": reply['username'],
                     "created_at": reply['created_at']
                 })
             
-            # Determine overall reply sentiment from post's reply_emotion field
-            overall_reply_emotion = post.get('reply_emotion') or 'no_replies'
-            if overall_reply_emotion and overall_reply_emotion != 'no_replies':
-                if overall_reply_emotion == 'joy':
-                    overall_reply_emotion = 'positive'
-                elif overall_reply_emotion in ['sadness', 'anger', 'fear']:
-                    overall_reply_emotion = 'negative'
-                elif overall_reply_emotion in ['curiosity', 'admiration', 'neutral']:
-                    overall_reply_emotion = 'neutral'
+            # 🚀 SMART EMOTION AVERAGING - NO MORE UNKNOWN!
+            def calculate_smart_average(emotions_list):
+                if not emotions_list:
+                    return 'no_replies'
+                
+                from collections import Counter
+                
+                # Filter out neutral and unknown for primary analysis
+                meaningful_emotions = [e for e in emotions_list if e not in ['neutral', 'unknown', None]]
+                
+                if not meaningful_emotions:
+                    # If only neutral/unknown, use most common overall
+                    counter = Counter(e for e in emotions_list if e)
+                    if counter:
+                        most_common = counter.most_common(2)
+                        if len(most_common) == 1:
+                            return most_common[0][0]
+                        else:
+                            return ", ".join([emotion for emotion, count in most_common])
+                    return 'neutral'
+                
+                # Count meaningful emotions and return top 1-2
+                counter = Counter(meaningful_emotions)
+                most_common = counter.most_common(2)
+                
+                if len(most_common) == 1:
+                    # Single dominant emotion
+                    return most_common[0][0]
+                else:
+                    # Top two emotions
+                    return ", ".join([emotion for emotion, count in most_common])
+            
+            smart_average = calculate_smart_average(raw_emotions)
             
             sentiment_data.append({
                 "post_id": post['id'],
@@ -895,12 +933,12 @@ async def get_sentiment_analysis(hashtag: str, authorization: Optional[str] = He
                 "created_at": post['created_at'],
                 "post_emotion": post_emotion,
                 "replies_count": len(post_replies),
-                "overall_reply_emotion": overall_reply_emotion,
+                "overall_reply_emotion": smart_average,
                 "reply_breakdown": reply_breakdown,
                 "reply_details": reply_details[:10]  # Limit to 10 replies for performance
             })
         
-        logger.info(f"⚡ Sentiment analysis completed for #{hashtag}: {len(sentiment_data)} posts analyzed")
+        logger.info(f"⚡ SMART Sentiment analysis completed for #{hashtag}: {len(sentiment_data)} posts analyzed")
         
         return {
             "hashtag": hashtag,
@@ -914,6 +952,7 @@ async def get_sentiment_analysis(hashtag: str, authorization: Optional[str] = He
     except Exception as e:
         logger.error(f"Sentiment analysis failed: {e}")
         raise HTTPException(500, "Failed to analyze sentiment")
+
 
 @app.get("/posts/{hashtag}")
 async def get_posts_lightning_fast(hashtag: str, limit: int = 20, offset: int = 0, authorization: Optional[str] = Header(None)):
